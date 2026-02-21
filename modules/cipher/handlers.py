@@ -79,12 +79,27 @@ class CipherModule(BaseModule):
 
             # Назад к списку модулей
             if call.data == "cipher_back_to_modules":
-                from core.keyboards import back_to_modules_keyboard
+                # Получаем список всех модулей и показываем их
+                from core.module_manager import module_manager
+                modules = module_manager.get_all_modules()
+
+                # Создаём клавиатуру со списком модулей
+                kb = types.InlineKeyboardMarkup(row_width=1)
+                for module in modules:
+                    kb.add(
+                        types.InlineKeyboardButton(
+                            f"{module.icon} {module.name}",
+                            callback_data=f"module_{module.id}"
+                        )
+                    )
+                kb.add(
+                    types.InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")
+                )
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text="📦 <b>Доступные модули</b>\n\nВыберите модуль для работы:",
-                    reply_markup=back_to_modules_keyboard(),
+                    reply_markup=kb,
                     parse_mode="HTML"
                 )
                 # Очищаем состояние пользователя
