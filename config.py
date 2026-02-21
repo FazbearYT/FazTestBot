@@ -1,7 +1,7 @@
-# Конфигурация FazTestBot v3.6
-# Модульный бот-агрегатор с системой резервного копирования
-# Версия: 3.6
-# Дата обновления: 19.02.2026
+# Конфигурация FazTestBot v4.0
+# Модульный бот-агрегатор с сокращением ссылок
+# Версия: 4.0
+# Дата обновления: 21.02.2026
 
 # Токен бота (получить у @BotFather в Telegram)
 BOT_TOKEN = "5240018753:AAH-9-YXLggScFMGHiIYB0q7zyoS2Fuk85c"
@@ -10,10 +10,10 @@ BOT_TOKEN = "5240018753:AAH-9-YXLggScFMGHiIYB0q7zyoS2Fuk85c"
 AUTHOR = "@Fazbear_r"
 
 # Версия бота
-VERSION = "3.6"
+VERSION = "4.0"
 
 # Дата последнего обновления
-LAST_UPDATE_DATE = "19.02.2026"
+LAST_UPDATE_DATE = "21.02.2026"
 
 # Путь к базе данных
 DATABASE_PATH = "users.db"
@@ -35,6 +35,10 @@ BACKUP_TIME = "03:00"  # Время автоматического бэкапа 
 BACKUP_DIR = "backups"  # Папка для хранения бэкапов
 BACKUP_RETENTION_COUNT = 7  # Количество хранимых бэкапов
 BACKUP_RETENTION_DAYS = 30  # Максимальный возраст бэкапа в днях
+
+# Настройки сокращения ссылок
+URL_SHORTENER_API = "tinyurl"  # API сервис: "tinyurl" или "cuttly"
+CUTTLY_API_KEY = ""  # API ключ для cutt.ly (если используется)
 
 # Глобальные настройки
 ALLOWED_SYMBOLS = "0123456789 .,!?;:'\"-()[]{}@#$%&*+=/\\|<>«»„"
