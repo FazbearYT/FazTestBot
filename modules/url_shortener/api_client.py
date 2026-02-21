@@ -1,8 +1,9 @@
 # modules/url_shortener/api_client.py
 # API клиент для сервисов сокращения ссылок
-# Версия: 1.0.0
-# Дата: 25.02.2026
+# Версия: 1.0.1
+# Дата: 21.02.2026
 
+import asyncio
 import aiohttp
 from typing import Optional, Dict, Tuple
 from .config import URL_SHORTENER_SERVICE, CUTTLY_API_KEY, DEFAULT_PROTOCOL

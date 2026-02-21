@@ -1,5 +1,7 @@
 # core/admin.py
 # Система скрытой админ-панели с надёжной аутентификацией
+# Версия: 4.0.1
+# Дата: 21.02.2026
 
 import sqlite3
 import json
@@ -283,8 +285,14 @@ class AdminManager:
         cursor.execute("DELETE FROM cipher_operations")
         ops_deleted = cursor.rowcount
 
-        # Очищаем пользователей (кроме админов)
-        cursor.execute("DELETE FROM users WHERE user_id NOT IN ({})".format(','.join(map(str, ADMINS))))
+        # ИСПРАВЛЕНО: SQL injection - используем параметризованный запрос
+        # Вместо: cursor.execute("DELETE FROM users WHERE user_id NOT IN ({})".format(','.join(map(str, ADMINS))))
+        if ADMINS:
+            placeholders = ','.join(['?' for _ in ADMINS])
+            cursor.execute(f"DELETE FROM users WHERE user_id NOT IN ({placeholders})", ADMINS)
+        else:
+            cursor.execute("DELETE FROM users")
+
         users_deleted = cursor.rowcount
 
         conn.commit()

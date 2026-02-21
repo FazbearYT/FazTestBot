@@ -1,6 +1,6 @@
 # modules/url_shortener/handlers.py
 # Обработчики модуля "URL Shortener"
-# Версия: 1.0.3
+# Версия: 1.0.4
 # Дата: 21.02.2026
 
 import asyncio
@@ -204,11 +204,8 @@ class URLShortenerModule(BaseModule):
             return
 
         try:
-            # Сокращаем ссылку через API
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            success, result = loop.run_until_complete(url_client.shorten_url(url))
-            loop.close()
+            # ИСПРАВЛЕНО: используем asyncio.run() вместо deprecated new_event_loop()
+            success, result = asyncio.run(url_client.shorten_url(url))
 
             if success:
                 shortened_url = result

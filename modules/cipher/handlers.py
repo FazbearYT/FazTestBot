@@ -1,12 +1,13 @@
 # modules/cipher/handlers.py
-# Обработчики модуля "Шифратор" для FazTestBot v3.5
+# Обработчики модуля "Шифратор" для FazTestBot v4.0.1
 # Адаптирован под BaseModule с унифицированным интерфейсом
-# Версия: 3.5
-# Дата: 19.02.2026
+# Версия: 4.0.1
+# Дата: 21.02.2026
 
 import qrcode
 import os
 import uuid
+import hashlib
 from telebot import types
 from typing import Any
 from core.module_base import BaseModule
@@ -113,7 +114,7 @@ class CipherModule(BaseModule):
                 if qr_message_id:
                     try:
                         bot.delete_message(chat_id, qr_message_id)
-                    except:
+                    except Exception:
                         pass
 
                 bot.edit_message_text(
@@ -246,7 +247,7 @@ class CipherModule(BaseModule):
                     if qr_message_id:
                         try:
                             bot.delete_message(chat_id, qr_message_id)
-                        except:
+                        except Exception:
                             pass
 
                 bot.edit_message_text(
@@ -315,7 +316,7 @@ class CipherModule(BaseModule):
             # Удаляем сообщение пользователя
             try:
                 bot.delete_message(chat_id, message.message_id)
-            except:
+            except Exception:
                 pass
 
             # Редактируем сообщение бота
@@ -333,7 +334,7 @@ class CipherModule(BaseModule):
             # Удаляем сообщение пользователя
             try:
                 bot.delete_message(chat_id, message.message_id)
-            except:
+            except Exception:
                 pass
 
             bot_message_id = self.get_user_state(chat_id, 'message_id')
@@ -360,7 +361,7 @@ class CipherModule(BaseModule):
         # Удаляем сообщение пользователя
         try:
             bot.delete_message(chat_id, message.message_id)
-        except:
+        except Exception:
             pass
 
         # Проверяем состояние
@@ -437,7 +438,9 @@ class CipherModule(BaseModule):
 
             # QR-код
             elif cipher == "qr":
-                filename = f"qr_{chat_id}_{hash(text)}.png"
+                # ИСПРАВЛЕНО: используем hashlib вместо hash() для стабильности
+                hash_object = hashlib.md5(text.encode())
+                filename = f"qr_{chat_id}_{hash_object.hexdigest()}.png"
                 try:
                     # Генерация QR-кода
                     img = qrcode.make(text)
@@ -446,7 +449,7 @@ class CipherModule(BaseModule):
                     # Удаляем исходное сообщение
                     try:
                         bot.delete_message(chat_id, message_id)
-                    except:
+                    except Exception:
                         pass
 
                     # Отправляем QR-код

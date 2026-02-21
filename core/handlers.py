@@ -1,7 +1,7 @@
 # core/handlers.py
 # Глобальные обработчики для главного меню, навигации, админ-панели и пасхалок
-# Версия: 3.6
-# Дата: 19.02.2026
+# Версия: 4.0.1
+# Дата: 21.02.2026
 
 import config
 from telebot import types
@@ -242,8 +242,8 @@ def register_global_handlers(bot):
                 # Удаляем сообщение с меню пасхалки
                 try:
                     bot.delete_message(chat_id, message_id)
-                except:
-                    pass
+                except Exception:
+                    pass  # ИСПРАВЛЕНО: конкретное исключение вместо bare except
 
                 # Отправляем новое сообщение с главным меню
                 bot.send_message(
@@ -308,8 +308,6 @@ def register_global_handlers(bot):
 
         try:
             bot.answer_callback_query(call.id)
-
-            # ====== СУЩЕСТВУЮЩИЕ ФУНКЦИИ АДМИН-ПАНЕЛИ ======
 
             # Главное админ-меню
             if call.data == "admin_stats":

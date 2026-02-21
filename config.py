@@ -10,7 +10,7 @@ BOT_TOKEN = "5240018753:AAH-9-YXLggScFMGHiIYB0q7zyoS2Fuk85c"
 AUTHOR = "@Fazbear_r"
 
 # Версия бота
-VERSION = "4.0"
+VERSION = "4.0.1"
 
 # Дата последнего обновления
 LAST_UPDATE_DATE = "21.02.2026"
