@@ -1,0 +1,46 @@
+# modules/cipher/keyboards.py
+# Клавиатуры модуля "Шифратор"
+
+from telebot import types
+
+
+def cipher_menu_keyboard():
+    """Меню выбора шифра"""
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton("📡 Азбука Морзе", callback_data="cipher_morze"),
+        types.InlineKeyboardButton("🔢 Числовой шифр", callback_data="cipher_numbers"),
+        types.InlineKeyboardButton("📷 QR-код", callback_data="cipher_qr"),
+        types.InlineKeyboardButton("🔄 Шифр Цезаря", callback_data="cipher_caesar"),
+        types.InlineKeyboardButton("🔙 Назад", callback_data="cipher_back_to_modules")
+    )
+    return kb
+
+
+def caesar_language_keyboard():
+    """Выбор языка для шифра Цезаря"""
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("🇷🇺 Русский", callback_data="cipher_lang_ru"),
+        types.InlineKeyboardButton("🇬🇧 Английский", callback_data="cipher_lang_en"),
+        types.InlineKeyboardButton("🔙 Отмена", callback_data="cipher_back_to_menu")
+    )
+    return kb
+
+
+def result_menu_keyboard(cipher_type):
+    """Меню после получения результата"""
+    kb = types.InlineKeyboardMarkup(row_width=2)
+
+    if cipher_type == "caesar":
+        kb.add(
+            types.InlineKeyboardButton("🔄 Другой текст", callback_data="cipher_again"),
+            types.InlineKeyboardButton("⚙️ Изменить настройки", callback_data="cipher_change_settings"),
+            types.InlineKeyboardButton("🔙 К шифрам", callback_data="cipher_back_to_menu")
+        )
+    else:
+        kb.add(
+            types.InlineKeyboardButton("🔄 Другой текст", callback_data="cipher_again"),
+            types.InlineKeyboardButton("🔙 К шифрам", callback_data="cipher_back_to_menu")
+        )
+    return kb
