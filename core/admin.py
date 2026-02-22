@@ -1,7 +1,7 @@
 # core/admin.py
 # Система скрытой админ-панели с надёжной аутентификацией
-# Версия: 4.0.1
-# Дата: 21.02.2026
+# Версия: 4.1
+# Дата: 22.02.2026
 
 import sqlite3
 import json
@@ -9,7 +9,7 @@ import csv
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 from telebot import types
-from config import ADMINS, ADMIN_SECRET_CODE, ADMIN_SESSION_HOURS
+import config
 
 
 class AdminManager:
@@ -41,9 +41,9 @@ class AdminManager:
 
     def authenticate_by_code(self, user_id: int, code: str) -> bool:
         """Аутентификация через секретное кодовое слово (получение статуса админа)"""
-        if code.strip() == ADMIN_SECRET_CODE:
+        if code.strip() == config.ADMIN_SECRET_CODE:
             # Создаём временную сессию на указанное количество часов
-            expires = datetime.now() + timedelta(hours=ADMIN_SESSION_HOURS)
+            expires = datetime.now() + timedelta(hours=config.ADMIN_SESSION_HOURS)
             self.admin_sessions[user_id] = {'until': expires}
             self._log_admin_action(user_id, "auth_by_code", None, f"Session until {expires}")
             return True
@@ -52,7 +52,7 @@ class AdminManager:
     def is_admin(self, user_id: int) -> bool:
         """Проверка прав администратора (постоянного или временного)"""
         # Проверяем постоянных админов
-        if user_id in ADMINS:
+        if user_id in config.ADMINS:
             return True
 
         # Проверяем временные сессии
@@ -286,10 +286,9 @@ class AdminManager:
         ops_deleted = cursor.rowcount
 
         # ИСПРАВЛЕНО: SQL injection - используем параметризованный запрос
-        # Вместо: cursor.execute("DELETE FROM users WHERE user_id NOT IN ({})".format(','.join(map(str, ADMINS))))
-        if ADMINS:
-            placeholders = ','.join(['?' for _ in ADMINS])
-            cursor.execute(f"DELETE FROM users WHERE user_id NOT IN ({placeholders})", ADMINS)
+        if config.ADMINS:
+            placeholders = ','.join(['?' for _ in config.ADMINS])
+            cursor.execute(f"DELETE FROM users WHERE user_id NOT IN ({placeholders})", config.ADMINS)
         else:
             cursor.execute("DELETE FROM users")
 

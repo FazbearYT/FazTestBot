@@ -1,3 +1,25 @@
 export.csv
 export.json
 .idea/
+.vscode/
+# Secrets and Configuration
+secrets.py
+.env
+*.key
+*.pem
+*.crt
+backups/
+*.bak
+*.backup
+# Media downloads
+downloads/
+*.mp4
+*.mp3
+*.jpg
+*.png
+# Test files
+test_*.py
+*_test.py
+.pytest_cache/
+.coverage
+htmlcov/

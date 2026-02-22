@@ -1,44 +1,80 @@
-# Конфигурация FazTestBot v4.0
-# Модульный бот-агрегатор с сокращением ссылок
-# Версия: 4.0
-# Дата обновления: 21.02.2026
+# config.py
+# Конфигурация FazTestBot v4.1
+# Модульный бот-агрегатор с безопасным хранением секретов
+# Версия: 4.1
+# Дата обновления: 22.02.2026
 
-# Токен бота (получить у @BotFather в Telegram)
-BOT_TOKEN = "5240018753:AAH-9-YXLggScFMGHiIYB0q7zyoS2Fuk85c"
+# ====== ЗАГРУЗКА СЕКРЕТОВ ======
+try:
+    from secrets import (
+        BOT_TOKEN,
+        ADMINS,
+        ADMIN_SECRET_CODE,
+        URL_SHORTENER_SERVICE,
+        CUTTLY_API_KEY,
+        MEDIA_DOWNLOADER_ENABLED,
+        MAX_DOWNLOAD_SIZE_MB,
+        MAX_DOWNLOADS_PER_USER_PER_DAY,
+        GROQ_API_KEY,
+        DATABASE_PATH,
+        BACKUP_DIR,
+        DOWNLOADS_DIR,
+        LOG_RETENTION_DAYS,
+        LOG_LEVEL
+    )
+except ImportError:
+    # Fallback для разработки (НЕ использовать в продакшене!)
+    print("⚠️ WARNING: secrets.py not found! Using fallback values.")
+    BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+    ADMINS = [123456789]
+    ADMIN_SECRET_CODE = "фазбер"
+    URL_SHORTENER_SERVICE = "tinyurl"
+    CUTTLY_API_KEY = ""
+    MEDIA_DOWNLOADER_ENABLED = True
+    MAX_DOWNLOAD_SIZE_MB = 50
+    MAX_DOWNLOADS_PER_USER_PER_DAY = 10
+    GROQ_API_KEY = ""
+    DATABASE_PATH = "users.db"
+    BACKUP_DIR = "backups"
+    DOWNLOADS_DIR = "downloads"
+    LOG_RETENTION_DAYS = 30
+    LOG_LEVEL = "INFO"
 
-# Автор бота
+# ====== ВЕРСИЯ БОТА ======
+VERSION = "4.1"
+LAST_UPDATE_DATE = "22.02.2026"
 AUTHOR = "@Fazbear_r"
 
-# Версия бота
-VERSION = "4.0.1"
+# ====== НАСТРОЙКИ РЕЗЕРВНОГО КОПИРОВАНИЯ ======
+BACKUP_ENABLED = True
+BACKUP_TIME = "03:00"
+BACKUP_RETENTION_COUNT = 7
+BACKUP_RETENTION_DAYS = 30
 
-# Дата последнего обновления
-LAST_UPDATE_DATE = "21.02.2026"
+# ====== НАСТРОЙКИ БЛОКИРОВКИ ======
+BLOCKED_USERS = []
 
-# Путь к базе данных
-DATABASE_PATH = "users.db"
-
-# Период хранения логов в днях (0 = хранить всё)
-LOG_RETENTION_DAYS = 30
-
-# Административные настройки
-ADMINS = [123456789]  # Список постоянных администраторов
-ADMIN_SECRET_CODE = "фазбер"  # Секретное кодовое слово для получения статуса администратора
-ADMIN_SESSION_HOURS = 24  # Длительность временной сессии в часах
-
-# Блокировка пользователей
-BLOCKED_USERS = []  # Список user_id, которые полностью игнорируются ботом
-
-# Настройки резервного копирования
-BACKUP_ENABLED = True  # Включить автоматические бэкапы
-BACKUP_TIME = "03:00"  # Время автоматического бэкапа (HH:MM)
-BACKUP_DIR = "backups"  # Папка для хранения бэкапов
-BACKUP_RETENTION_COUNT = 7  # Количество хранимых бэкапов
-BACKUP_RETENTION_DAYS = 30  # Максимальный возраст бэкапа в днях
-
-# Настройки сокращения ссылок
-URL_SHORTENER_API = "tinyurl"  # API сервис: "tinyurl" или "cuttly"
-CUTTLY_API_KEY = ""  # API ключ для cutt.ly (если используется)
-
-# Глобальные настройки
+# ====== ГЛОБАЛЬНЫЕ НАСТРОЙКИ ======
 ALLOWED_SYMBOLS = "0123456789 .,!?;:'\"-()[]{}@#$%&*+=/\\|<>«»„"
+
+
+# ====== ПРОВЕРКА СЕКРЕТОВ ======
+def validate_secrets():
+    """Проверка наличия необходимых секретов"""
+    errors = []
+
+    if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+        errors.append("❌ BOT_TOKEN не настроен в secrets.py")
+
+    if not ADMINS or ADMINS == []:
+        errors.append("⚠️ ADMINS не настроен (используется значение по умолчанию)")
+
+    if errors:
+        print("\n⚠️ ОШИБКИ КОНФИГУРАЦИИ:")
+        for error in errors:
+            print(error)
+        print("\n📝 Скопируйте secrets.template.py в secrets.py и заполните значения!\n")
+        return False
+
+    print("✅ Все секреты настроены корректно")
+    return True
