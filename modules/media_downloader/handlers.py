@@ -1,6 +1,6 @@
 # modules/media_downloader/handlers.py
-# Обработчики модуля "Media Downloader"
-# Версия: 1.0.0
+# Обработчики модуля Media Downloader
+# Версия: 4.1.1
 # Дата: 22.02.2026
 
 import os
@@ -13,7 +13,6 @@ from core.database import DatabaseManager
 from .keyboards import (
     media_downloader_menu_keyboard,
     quality_keyboard,
-    download_result_keyboard,
     my_downloads_keyboard
 )
 from .downloader import downloader
@@ -21,31 +20,22 @@ from .config import (
     ENABLED,
     MAX_FILE_SIZE_MB,
     MAX_DOWNLOADS_PER_USER_PER_DAY,
-    TABLE_NAME,
-    SUPPORTED_PLATFORMS
+    TABLE_NAME
 )
 import config
 
-# Глобальный экземпляр БД
 db = DatabaseManager()
 
 
 class MediaDownloaderModule(BaseModule):
-    """
-    Модуль загрузки медиа из YouTube, TikTok, Instagram и других платформ.
-
-    Наследуется от BaseModule и реализует все обязательные методы.
-    """
+    """Модуль загрузки медиа"""
 
     def __init__(self, module_id, name, description, icon, version, callback_prefix):
-        """Инициализация модуля Media Downloader"""
         super().__init__(module_id, name, description, icon, version, callback_prefix)
-
-        # Создаём таблицу в БД при инициализации
         self._init_database()
 
     def _init_database(self):
-        """Инициализация таблицы загрузок в БД"""
+        """Инициализация БД"""
         try:
             conn = sqlite3.connect(config.DATABASE_PATH)
             cursor = conn.cursor()
@@ -68,106 +58,63 @@ class MediaDownloaderModule(BaseModule):
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"⚠️ Ошибка инициализации БД Media Downloader: {str(e)}")
+            print(f"⚠️ Ошибка инициализации БД: {str(e)}")
 
     def handle_entry(self, bot: Any, call: Any) -> None:
-        """
-        ОБЯЗАТЕЛЬНО: Вход в модуль — показ меню.
-
-        :param bot: Экземпляр TeleBot
-        :param call: Объект CallbackQuery
-        """
+        """Вход в модуль"""
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
-        # Инициализируем состояние пользователя
         self.set_user_state(chat_id, 'message_id', message_id)
         self.set_user_state(chat_id, 'media_type', None)
         self.set_user_state(chat_id, 'quality', None)
-        self.set_user_state(chat_id, 'url', None)
-
-        # Проверяем, включён ли модуль
-        if not ENABLED:
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text="🚫 <b>Media Downloader</b>\n\n"
-                     "Модуль временно отключен администратором.\n\n"
-                     "Попробуйте позже.",
-                reply_markup=media_downloader_menu_keyboard(),
-                parse_mode="HTML"
-            )
-            return
 
         bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
             text="📥 <b>Media Downloader</b>\n\n"
-                 "Загрузка видео и аудио из:\n"
+                 "Загрузка видео и аудио:\n"
                  "• YouTube\n"
-                 "• TikTok\n"
-                 "• Instagram\n"
-                 "• Twitter/X\n"
-                 "• Facebook\n"
-                 "• Vimeo\n\n"
+                 "• TikTok, Instagram\n\n"
                  f"Макс. размер: {MAX_FILE_SIZE_MB}MB\n"
-                 f"Лимит: {MAX_DOWNLOADS_PER_USER_PER_DAY} загрузок/день\n\n"
+                 f"Лимит: {MAX_DOWNLOADS_PER_USER_PER_DAY}/день\n\n"
                  "Выберите действие:",
             reply_markup=media_downloader_menu_keyboard(),
             parse_mode="HTML"
         )
 
     def handle_callback(self, bot: Any, call: Any) -> None:
-        """
-        ОБЯЗАТЕЛЬНО: Обработка колбэков внутри модуля.
-
-        :param bot: Экземпляр TeleBot
-        :param call: Объект CallbackQuery
-        """
+        """Обработка колбэков"""
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
         try:
             bot.answer_callback_query(call.id)
 
-            # Проверка: включён ли модуль
-            if not ENABLED:
-                bot.answer_callback_query(
-                    call.id,
-                    "Модуль отключен администратором",
-                    show_alert=True
-                )
-                return
-
             # Назад к списку модулей
             if call.data == "media_back_to_modules":
-                # Получаем список всех модулей и показываем их
                 from core.module_manager import module_manager
                 modules = module_manager.get_all_modules()
 
                 kb = types.InlineKeyboardMarkup(row_width=1)
                 for module in modules:
-                    kb.add(
-                        types.InlineKeyboardButton(
-                            f"{module.icon} {module.name}",
-                            callback_data=f"module_{module.id}"
-                        )
-                    )
-                kb.add(
-                    types.InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")
-                )
+                    kb.add(types.InlineKeyboardButton(
+                        f"{module.icon} {module.name}",
+                        callback_data=f"module_{module.id}"
+                    ))
+                kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="back_to_main"))
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text="📦 <b>Доступные модули</b>\n\nВыберите модуль для работы:",
+                    text="📦 <b>Доступные модули</b>\n\nВыберите модуль:",
                     reply_markup=kb,
                     parse_mode="HTML"
                 )
                 self.cleanup_user_state(chat_id)
                 return
 
-            # Назад в меню модуля
+            # Назад в меню
             if call.data == "media_back_to_menu":
                 bot.edit_message_text(
                     chat_id=chat_id,
@@ -181,36 +128,54 @@ class MediaDownloaderModule(BaseModule):
             # Загрузка видео
             if call.data == "media_video":
                 self.set_user_state(chat_id, 'media_type', 'video')
+                self.set_user_state(chat_id, 'quality', None)  # СБРОС качества!
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text="🎬 <b>Загрузка видео</b>\n\n"
-                         "Отправьте ссылку на видео:\n"
-                         "• YouTube\n"
-                         "• TikTok\n"
-                         "• Instagram\n"
-                         "• Twitter/X\n"
-                         "• Facebook\n"
-                         "• Vimeo",
-                    reply_markup=None,
+                    text="🎬 <b>Загрузка видео</b>\n\nВыберите качество:",
+                    reply_markup=quality_keyboard("video"),
                     parse_mode="HTML"
                 )
-                bot.register_next_step_handler(call.message, self._process_url_input, bot)
                 return
 
             # Загрузка аудио
             if call.data == "media_audio":
                 self.set_user_state(chat_id, 'media_type', 'audio')
+                self.set_user_state(chat_id, 'quality', None)  # СБРОС качества!
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text="🎵 <b>Загрузка аудио</b>\n\n"
-                         "Отправьте ссылку на видео (YouTube, TikTok, Vimeo):\n\n"
-                         "<i>Будет извлечена только аудиодорожка</i>",
+                    text="🎵 <b>Загрузка аудио</b>\n\nВыберите качество:",
+                    reply_markup=quality_keyboard("audio"),
+                    parse_mode="HTML"
+                )
+                return
+
+            # Выбор качества
+            if call.data.startswith("media_quality_"):
+                quality = call.data.replace("media_quality_", "")
+                media_type = self.get_user_state(chat_id, 'media_type')
+
+                # ПРОВЕРКА: выбран ли тип медиа
+                if not media_type:
+                    bot.answer_callback_query(call.id, "⚠️ Сначала выберите тип", show_alert=True)
+                    return
+
+                # СОХРАНЕНИЕ качества
+                self.set_user_state(chat_id, 'quality', quality)
+                print(f"\n✅ Качество сохранено: {quality} (тип: {media_type})")
+
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"📥 <b>Загрузка</b>\n\n"
+                         f"Тип: {'Видео' if media_type == 'video' else 'Аудио'}\n"
+                         f"Качество: {quality}\n\n"
+                         f"Отправьте ссылку:",
                     reply_markup=None,
                     parse_mode="HTML"
                 )
-                bot.register_next_step_handler(call.message, self._process_url_input, bot)
+                bot.register_next_step_handler_by_chat_id(chat_id, self._process_url_input, bot)
                 return
 
             # Мои загрузки
@@ -218,22 +183,13 @@ class MediaDownloaderModule(BaseModule):
                 downloads = self._get_user_downloads(chat_id)
 
                 if not downloads:
-                    text = "📋 <b>Мои загрузки</b>\n\n"
-                    text += "⚠️ У вас пока нет загрузок.\n\n"
-                    text += "Используйте «🎬 Видео» или «🎵 Аудио» для первой загрузки."
+                    text = "📋 <b>Мои загрузки</b>\n\n⚠️ Пока нет загрузок."
                 else:
-                    text = "📋 <b>Мои загрузки</b>\n\n"
-                    text += f"Всего загрузок: {len(downloads)}\n\n"
-
+                    text = f"📋 <b>Мои загрузки</b>\n\nВсего: {len(downloads)}\n\n"
                     for i, dl in enumerate(downloads[:10], 1):
-                        platform = dl.get('platform', 'Unknown')
-                        media_type = "🎬" if dl.get('media_type') == 'video' else "🎵"
-                        text += f"{i}. {media_type} {platform}\n"
-                        text += f"   {dl.get('title', 'Unknown')[:50]}...\n"
-                        text += f"   {dl.get('created_at', '')[:10]}\n\n"
-
-                    if len(downloads) > 10:
-                        text += f"<i>... и ещё {len(downloads) - 10} загрузок</i>"
+                        icon = "🎬" if dl.get('media_type') == 'video' else "🎵"
+                        text += f"{i}. {icon} {dl.get('platform', '?')}\n"
+                        text += f"   {dl.get('title', '?')[:50]}...\n\n"
 
                 bot.edit_message_text(
                     chat_id=chat_id,
@@ -244,204 +200,112 @@ class MediaDownloaderModule(BaseModule):
                 )
                 return
 
-            # Выбор качества
-            if call.data.startswith("media_quality_"):
-                quality = call.data.replace("media_quality_", "")
-                media_type = self.get_user_state(chat_id, 'media_type')
-
-                if not media_type:
-                    bot.answer_callback_query(
-                        call.id,
-                        "⚠️ Сначала выберите тип медиа",
-                        show_alert=True
-                    )
-                    return
-
-                self.set_user_state(chat_id, 'quality', quality)
-
-                # После выбора качества запрашиваем URL
-                if media_type == 'video':
-                    bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=message_id,
-                        text=f"🎬 <b>Загрузка видео</b>\n\n"
-                             f"Качество: {quality}\n\n"
-                             "Отправьте ссылку на видео:",
-                        reply_markup=None,
-                        parse_mode="HTML"
-                    )
-                else:
-                    bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=message_id,
-                        text=f"🎵 <b>Загрузка аудио</b>\n\n"
-                             f"Качество: {quality} kbps\n\n"
-                             "Отправьте ссылку на видео:",
-                        reply_markup=None,
-                        parse_mode="HTML"
-                    )
-
-                bot.register_next_step_handler_by_chat_id(chat_id, self._process_url_input, bot)
-                return
-
-            # Повторная загрузка
+            # Повтор
             if call.data == "media_again":
                 media_type = self.get_user_state(chat_id, 'media_type')
+                quality = self.get_user_state(chat_id, 'quality')
 
-                if media_type == 'video':
-                    bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=message_id,
-                        text="🎬 <b>Загрузка видео</b>\n\n"
-                             "Отправьте ссылку на видео:",
-                        reply_markup=None,
-                        parse_mode="HTML"
-                    )
-                else:
-                    bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=message_id,
-                        text="🎵 <b>Загрузка аудио</b>\n\n"
-                             "Отправьте ссылку на видео:",
-                        reply_markup=None,
-                        parse_mode="HTML"
-                    )
+                # Если качество не выбрано, используем дефолтное
+                if not quality:
+                    quality = '360' if media_type == 'video' else '128'
 
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"📥 <b>Загрузка</b>\n\n"
+                         f"Качество: {quality}\n\n"
+                         f"Отправьте ссылку:",
+                    reply_markup=None,
+                    parse_mode="HTML"
+                )
                 bot.register_next_step_handler_by_chat_id(chat_id, self._process_url_input, bot)
                 return
 
         except Exception as e:
-            bot.answer_callback_query(
-                call.id,
-                f"Ошибка: {str(e)[:60]}",
-                show_alert=True
-            )
+            bot.answer_callback_query(call.id, f"Ошибка: {str(e)[:60]}", show_alert=True)
 
     def get_menu_keyboard(self) -> types.InlineKeyboardMarkup:
-        """
-        ОБЯЗАТЕЛЬНО: Возвращает клавиатуру меню модуля.
-
-        :return: InlineKeyboardMarkup для меню модуля
-        """
+        """Клавиатура меню"""
         return media_downloader_menu_keyboard()
 
     def _process_url_input(self, message, bot):
-        """Обработка ввода URL для загрузки"""
+        """Обработка ввода URL"""
         chat_id = message.chat.id
         url = message.text.strip()
 
         # Удаляем сообщение пользователя
         try:
             bot.delete_message(chat_id, message.message_id)
-        except Exception:
+        except:
             pass
 
-        # Проверяем состояние
         message_id = self.get_user_state(chat_id, 'message_id')
         media_type = self.get_user_state(chat_id, 'media_type')
+        quality = self.get_user_state(chat_id, 'quality')
+
+        # ПРОВЕРКА: выбрано ли качество
+        if not quality:
+            quality = '360' if media_type == 'video' else '128'
+            print(f"⚠️ Качество не выбрано, используем: {quality}")
+
+        print(f"\n🔍 Параметры загрузки: тип={media_type}, качество={quality}")
 
         if message_id is None or not media_type:
-            bot.send_message(
-                chat_id,
-                "⚠️ Сессия устарела. Вернитесь в главное меню.",
-                reply_markup=media_downloader_menu_keyboard()
-            )
+            bot.send_message(chat_id, "⚠️ Сессия устарела.", reply_markup=media_downloader_menu_keyboard())
             return
 
-        # Проверяем лимит загрузок
+        # Проверяем лимит
         if not self._check_download_limit(chat_id):
             bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"⚠️ <b>Лимит загрузок</b>\n\n"
-                     f"Вы достигли лимита ({MAX_DOWNLOADS_PER_USER_PER_DAY} загрузок/день).\n\n"
-                     f"Попробуйте завтра.",
+                text=f"⚠️ <b>Лимит</b>\n\nДостигнут лимит ({MAX_DOWNLOADS_PER_USER_PER_DAY}/день).",
                 reply_markup=media_downloader_menu_keyboard(),
                 parse_mode="HTML"
             )
             return
 
-        # Получаем информацию о видео
+        # Показываем статус
         bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text="⏳ <b>Получение информации...</b>\n\n"
-                 "Пожалуйста, подождите.",
+            text="⏳ <b>Обработка...</b>",
             reply_markup=None,
             parse_mode="HTML"
         )
 
+        # Получаем информацию
         video_info = downloader.get_video_info(url)
 
         if not video_info:
             bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text="❌ <b>Ошибка</b>\n\n"
-                     "Не удалось получить информацию о видео.\n\n"
-                     "Проверьте ссылку и попробуйте снова.",
+                text="❌ <b>Ошибка</b>\n\nНе удалось получить информацию.",
                 reply_markup=media_downloader_menu_keyboard(),
                 parse_mode="HTML"
             )
             return
 
-        # Проверяем платформу
-        platform = video_info.get('platform', 'unknown')
-        if platform == 'unknown':
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text="❌ <b>Неподдерживаемая платформа</b>\n\n"
-                     "Эта платформа не поддерживается.\n\n"
-                     "Поддерживаются: YouTube, TikTok, Instagram, Twitter, Facebook, Vimeo",
-                reply_markup=media_downloader_menu_keyboard(),
-                parse_mode="HTML"
-            )
-            return
-
-        # Проверяем, поддерживает ли платформа нужный тип медиа
-        platform_info = SUPPORTED_PLATFORMS.get(platform, {})
-        if media_type == 'audio' and not platform_info.get('audio', False):
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=f"❌ <b>Аудио не поддерживается</b>\n\n"
-                     f"{platform_info.get('name', platform)} не поддерживает загрузку аудио.\n\n"
-                     "Попробуйте загрузить видео или выберите другую платформу.",
-                reply_markup=media_downloader_menu_keyboard(),
-                parse_mode="HTML"
-            )
-            return
-
-        # Показываем информацию о видео
-        duration = video_info.get('duration', 0)
-        duration_str = f"{duration // 60}:{duration % 60:02d}" if duration else "Unknown"
-
+        # Показываем информацию
         bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text=f"📥 <b>Информация о видео</b>\n\n"
-                 f"🎬 {video_info.get('title', 'Unknown')[:100]}\n"
-                 f"📺 Платформа: {video_info.get('platform_name', 'Unknown')}\n"
-                 f"👤 Автор: {video_info.get('uploader', 'Unknown')}\n"
-                 f"⏱️ Длительность: {duration_str}\n"
-                 f"👁️ Просмотров: {video_info.get('view_count', 0):,}\n\n"
-                 f"{'🎬' if media_type == 'video' else '🎵'} Тип: {media_type}\n\n"
-                 "Начинаю загрузку...",
+            text=f"📥 <b>Информация</b>\n\n"
+                 f"🎬 {video_info.get('title', '?')[:100]}\n"
+                 f"⏱️ {video_info.get('duration_str', '?')}\n\n"
+                 f"{'🎬' if media_type == 'video' else '🎵'} Загрузка...",
             reply_markup=None,
             parse_mode="HTML"
         )
 
-        # Загружаем медиа
-        quality = self.get_user_state(chat_id, 'quality', '720' if media_type == 'video' else '192')
-
+        # Загружаем
         if media_type == 'video':
             success, filepath = downloader.download_video(url, quality)
         else:
             success, filepath = downloader.download_audio(url, quality)
 
         if success and filepath and os.path.exists(filepath):
-            # Проверяем размер файла
             file_size = os.path.getsize(filepath)
             file_size_mb = file_size / (1024 * 1024)
 
@@ -450,82 +314,90 @@ class MediaDownloaderModule(BaseModule):
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"❌ <b>Файл слишком большой</b>\n\n"
-                         f"Размер: {file_size_mb:.2f}MB\n"
-                         f"Максимум: {MAX_FILE_SIZE_MB}MB\n\n"
-                         "Попробуйте выбрать меньшее качество.",
+                    text=f"❌ <b>Файл слишком большой</b>\n\nРазмер: {file_size_mb:.2f}MB\nМаксимум: {MAX_FILE_SIZE_MB}MB",
                     reply_markup=media_downloader_menu_keyboard(),
                     parse_mode="HTML"
                 )
                 return
 
-            # Отправляем файл
+            # ==========================================
+            # ОТПРАВКА ФАЙЛА (КРИТИЧЕСКИ ВАЖНО!)
+            # ==========================================
+            print(f"\n{'=' * 50}")
+            print(f"📤 ОТПРАВКА ФАЙЛА:")
+            print(f"   Путь: {filepath}")
+            print(f"   Размер: {file_size_mb:.2f}MB")
+            print(f"   Timeout: 300 сек (5 минут)")
+            print(f"{'=' * 50}\n")
+
             try:
                 if media_type == 'video':
+                    print("🎬 Отправка видео...")
                     with open(filepath, 'rb') as f:
                         bot.send_video(
                             chat_id,
                             f,
-                            caption=f"📥 {video_info.get('title', 'Unknown')[:200]}",
-                            timeout=300
+                            caption=video_info.get('title', '')[:200],
+                            timeout=300  # 5 МИНУТ!
                         )
                 else:
+                    print("🎵 Отправка аудио...")
                     with open(filepath, 'rb') as f:
                         bot.send_audio(
                             chat_id,
                             f,
-                            caption=f"📥 {video_info.get('title', 'Unknown')[:200]}",
-                            timeout=300
+                            caption=video_info.get('title', '')[:200],
+                            timeout=300  # 5 МИНУТ!
                         )
-            except Exception as e:
-                print(f"❌ Ошибка отправки файла: {str(e)}")
-                bot.send_message(
-                    chat_id,
-                    f"❌ Ошибка отправки: {str(e)[:200]}"
-                )
-            finally:
-                # Удаляем файл после отправки
-                downloader.cleanup_file(filepath)
 
-            # Логируем загрузку
+                print("✅ ФАЙЛ ОТПРАВЛЕН УСПЕШНО!\n")
+
+            except Exception as e:
+                print(f"❌ ОШИБКА ОТПРАВКИ: {str(e)}\n")
+                print(f"📊 Тип ошибки: {type(e).__name__}")
+                bot.send_message(chat_id, f"❌ Ошибка отправки: {str(e)[:200]}")
+            finally:
+                # ==========================================
+                # УДАЛЯЕМ ФАЙЛ ТОЛЬКО ПОСЛЕ ОТПРАВКИ!
+                # ==========================================
+                print("🗑️ Удаление временного файла...")
+                downloader.cleanup_file(filepath)
+                print(f"{'=' * 50}\n")
+
+            # Логируем
             self._log_download(
                 user_id=chat_id,
                 url=url,
                 media_type=media_type,
-                platform=platform,
-                title=video_info.get('title', 'Unknown'),
+                platform=video_info.get('platform', ''),
+                title=video_info.get('title', ''),
                 file_path=filepath,
                 file_size=file_size,
                 quality=quality
             )
 
-            # Показываем меню
-            bot.send_message(
-                chat_id,
-                "✅ Загрузка завершена!",
-                reply_markup=media_downloader_menu_keyboard()
+            # Показываем результат
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text="✅ <b>Готово!</b>\n\nВыберите действие:",
+                reply_markup=media_downloader_menu_keyboard(),
+                parse_mode="HTML"
             )
         else:
             bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text="❌ <b>Ошибка загрузки</b>\n\n"
-                     "Не удалось загрузить медиа.\n\n"
-                     "Возможные причины:\n"
-                     "• Видео недоступно\n"
-                     "• Ограничения платформы\n"
-                     "• Проблемы с сетью\n\n"
-                     "Попробуйте другую ссылку.",
+                text="❌ <b>Ошибка загрузки</b>\n\nПопробуйте другую ссылку.",
                 reply_markup=media_downloader_menu_keyboard(),
                 parse_mode="HTML"
             )
 
     def _check_download_limit(self, user_id: int) -> bool:
-        """Проверка лимита загрузок на пользователя в день"""
+        """Проверка лимита"""
         try:
             conn = sqlite3.connect(config.DATABASE_PATH)
             cursor = conn.cursor()
-
             today = datetime.now().strftime('%Y-%m-%d')
 
             cursor.execute(f"""
@@ -535,17 +407,13 @@ class MediaDownloaderModule(BaseModule):
 
             count = cursor.fetchone()[0]
             conn.close()
-
             return count < MAX_DOWNLOADS_PER_USER_PER_DAY
+        except:
+            return True
 
-        except Exception as e:
-            print(f"⚠️ Ошибка проверки лимита: {str(e)}")
-            return True  # Разрешаем при ошибке
-
-    def _log_download(self, user_id: int, url: str, media_type: str,
-                      platform: str, title: str, file_path: str,
-                      file_size: int, quality: str):
-        """Логирование загрузки в БД"""
+    def _log_download(self, user_id: int, url: str, media_type: str, platform: str,
+                      title: str, file_path: str, file_size: int, quality: str):
+        """Логирование"""
         try:
             conn = sqlite3.connect(config.DATABASE_PATH)
             cursor = conn.cursor()
@@ -559,10 +427,10 @@ class MediaDownloaderModule(BaseModule):
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"⚠️ Ошибка логирования загрузки: {str(e)}")
+            print(f"⚠️ Ошибка логирования: {str(e)}")
 
     def _get_user_downloads(self, user_id: int) -> list:
-        """Получение истории загрузок пользователя"""
+        """Получение истории"""
         try:
             conn = sqlite3.connect(config.DATABASE_PATH)
             cursor = conn.cursor()
@@ -589,17 +457,14 @@ class MediaDownloaderModule(BaseModule):
 
             conn.close()
             return downloads
-        except Exception as e:
-            print(f"⚠️ Ошибка получения загрузок: {str(e)}")
+        except:
             return []
 
     def on_load(self, bot: Any) -> None:
-        """Вызывается при загрузке модуля"""
+        """Загрузка модуля"""
         if ENABLED:
-            print(f"📥 Модуль Media Downloader v{self.version} загружен")
-        else:
-            print(f"⚠️ Модуль Media Downloader v{self.version} отключен")
+            print(f"📥 Media Downloader v4.1.1 загружен")
 
     def on_unload(self, bot: Any) -> None:
-        """Вызывается при выгрузке модуля"""
-        print(f"📥 Модуль Media Downloader v{self.version} выгружен")
+        """Выгрузка модуля"""
+        print(f"📥 Media Downloader выгружен")

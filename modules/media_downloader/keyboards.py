@@ -1,6 +1,6 @@
 # modules/media_downloader/keyboards.py
 # Клавиатуры модуля "Media Downloader"
-# Версия: 1.0.0
+# Версия: 4.1.1
 # Дата: 22.02.2026
 
 from telebot import types
@@ -42,21 +42,6 @@ def quality_keyboard(media_type: str):
 
     kb.add(
         types.InlineKeyboardButton("🔙 Отмена", callback_data="media_back_to_menu")
-    )
-    return kb
-
-
-def download_result_keyboard(file_path: str, media_type: str):
-    """
-    Клавиатура после загрузки
-
-    :param file_path: Путь к файлу (для отправки)
-    :param media_type: "video" или "audio"
-    """
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        types.InlineKeyboardButton("🔄 Ещё", callback_data="media_again"),
-        types.InlineKeyboardButton("🔙 К меню", callback_data="media_back_to_menu")
     )
     return kb
 

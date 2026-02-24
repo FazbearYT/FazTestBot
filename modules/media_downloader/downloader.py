@@ -1,222 +1,198 @@
 # modules/media_downloader/downloader.py
-# Загрузчик медиа через yt-dlp
-# Версия: 1.0.0
+# Загрузчик медиа на основе pytubefix
+# Версия: 4.1.1
 # Дата: 22.02.2026
 
-import yt_dlp
 import os
-from typing import Optional, Dict, Tuple
+import time
+import hashlib
 from pathlib import Path
-from .config import DOWNLOADS_DIR, DEFAULT_VIDEO_QUALITY, DEFAULT_AUDIO_QUALITY
+from typing import Optional, Dict, Tuple
+from .config import DOWNLOADS_DIR
 
 
 class MediaDownloader:
-    """Загрузчик медиа из соцсетей через yt-dlp"""
+    """Загрузчик медиа с pytubefix для YouTube"""
 
     def __init__(self, temp_dir: str = None):
         self.temp_dir = Path(temp_dir or DOWNLOADS_DIR)
         self.temp_dir.mkdir(exist_ok=True)
 
     def get_video_info(self, url: str) -> Optional[Dict]:
-        """
-        Получение информации о видео без загрузки
-
-        :param url: URL видео
-        :return: Информация о видео или None
-        """
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': False,
-            'skip_download': True
-        }
-
+        """Получение информации о видео"""
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+            from pytubefix import YouTube
 
-                # Определяем платформу
-                platform = self._detect_platform(url)
+            print(f"🔍 Получение информации о видео...")
+            yt = YouTube(url)
 
-                return {
-                    'title': info.get('title', 'Unknown'),
-                    'duration': info.get('duration', 0),
-                    'thumbnail': info.get('thumbnail', ''),
-                    'platform': platform,
-                    'platform_name': self._get_platform_name(platform),
-                    'uploader': info.get('uploader', 'Unknown'),
-                    'view_count': info.get('view_count', 0),
-                    'formats': self._get_available_formats(info)
-                }
+            duration = yt.length
+            if duration:
+                minutes = duration // 60
+                seconds = duration % 60
+                duration_str = f"{minutes}:{seconds:02d}"
+            else:
+                duration_str = "Unknown"
+
+            return {
+                'title': yt.title,
+                'duration': duration,
+                'duration_str': duration_str,
+                'thumbnail': yt.thumbnail_url,
+                'platform': 'youtube',
+                'platform_name': 'YouTube',
+                'uploader': yt.author,
+                'view_count': yt.views,
+                'url': url
+            }
         except Exception as e:
-            print(f"❌ Ошибка получения информации: {str(e)}")
+            print(f"❌ Ошибка получения информации: {str(e)[:100]}")
             return None
 
-    def download_video(self, url: str, quality: str = "720p") -> Tuple[bool, str]:
-        """
-        Загрузка видео
-
-        :param url: URL видео
-        :param quality: Желаемое качество (360p, 480p, 720p, 1080p)
-        :return: (success: bool, filepath: str)
-        """
-        filename = self._generate_filename(url, "video")
-
-        # Преобразуем качество в формат yt-dlp
-        quality_map = {
-            "360p": "360",
-            "480p": "480",
-            "720p": "720",
-            "1080p": "1080"
-        }
-        height = quality_map.get(quality, "720")
-
-        ydl_opts = {
-            'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/best',
-            'outtmpl': str(filename),
-            'quiet': True,
-            'no_warnings': True,
-            'noplaylist': True,
-            'merge_output_format': 'mp4'
-        }
-
+    def download_video(self, url: str, quality: str = "360p") -> Tuple[bool, str]:
+        """Загрузка видео"""
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+            from pytubefix import YouTube
 
-            # Проверяем существование файла
-            if filename.exists():
-                return True, str(filename)
+            print(f"\n📥 Загрузка видео (качество: {quality})...")
 
-            # Проверяем с другими расширениями
-            for ext in ['.mp4', '.mkv', '.webm']:
-                test_file = Path(str(filename) + ext)
-                if test_file.exists():
-                    return True, str(test_file)
+            yt = YouTube(url)
 
-            return False, ""
+            # Парсим качество
+            quality_map = {
+                "360p": 360,
+                "480p": 480,
+                "720p": 720,
+                "1080p": 1080
+            }
+            max_height = quality_map.get(quality, 360)
+
+            print(f"🔍 Ищем качество до {max_height}p...")
+
+            # Получаем все прогрессивные потоки (видео+аудио вместе)
+            progressive_streams = yt.streams.filter(
+                progressive=True,
+                file_extension='mp4'
+            )
+
+            if not progressive_streams:
+                print("❌ Не найдено прогрессивных потоков")
+                return False, "Не найдено подходящих видео потоков"
+
+            # Выводим доступные качества
+            print("📋 Доступные качества:")
+            available_streams = []
+            for stream in progressive_streams:
+                if stream.resolution:
+                    height = int(stream.resolution.replace('p', ''))
+                    available_streams.append((height, stream))
+                    print(f"  - {stream.resolution} ({stream.filesize / 1024 / 1024:.1f}MB)")
+
+            # Сортируем по убыванию
+            available_streams.sort(reverse=True)
+
+            # Выбираем ЛУЧШИЙ поток с качеством <= запрошенному
+            selected_stream = None
+            for height, stream in available_streams:
+                if height <= max_height:
+                    selected_stream = stream
+                    print(f"✅ Выбрано качество: {stream.resolution}")
+                    break
+
+            # Если не нашли, берем САМОЕ НИЗКОЕ доступное
+            if not selected_stream:
+                selected_stream = available_streams[-1][1] if available_streams else None
+                print(f"⚠️ Используется доступное качество: {selected_stream.resolution if selected_stream else 'N/A'}")
+
+            if not selected_stream:
+                return False, "Не найдено подходящих видео потоков"
+
+            print(f"🎬 {yt.title[:50]}...")
+
+            # Генерируем имя файла
+            filename = self._generate_filename(url, "video", ".mp4")
+
+            # Скачиваем
+            print(f"💾 Скачивание...")
+            filepath = selected_stream.download(
+                output_path=str(self.temp_dir),
+                filename=filename.name
+            )
+
+            if filepath and os.path.exists(filepath):
+                file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                print(f"✅ Загружено: {os.path.basename(filepath)} ({file_size_mb:.1f}MB)")
+                return True, filepath
+            else:
+                print("❌ Файл не создан")
+                return False, "Файл не создан"
 
         except Exception as e:
-            print(f"❌ Ошибка загрузки видео: {str(e)}")
-            return False, ""
+            print(f"❌ Ошибка: {str(e)[:100]}")
+            return False, f"Ошибка: {str(e)}"
 
-    def download_audio(self, url: str, quality: str = "192") -> Tuple[bool, str]:
-        """
-        Загрузка только аудио (mp3)
-
-        :param url: URL видео
-        :param quality: Качество аудио (128, 192, 320 kbps)
-        :return: (success: bool, filepath: str)
-        """
-        filename = self._generate_filename(url, "audio")
-
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': str(filename),
-            'quiet': True,
-            'no_warnings': True,
-            'noplaylist': True,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': quality
-            }]
-        }
-
+    def download_audio(self, url: str, quality: str = "128") -> Tuple[bool, str]:
+        """Загрузка аудио"""
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+            from pytubefix import YouTube
 
-            # Проверяем существование файла
-            if filename.exists():
-                return True, str(filename)
+            print(f"🎵 Загрузка аудио (качество: {quality} kbps)...")
 
-            # Проверяем с расширением mp3
-            mp3_file = Path(str(filename) + '.mp3')
-            if mp3_file.exists():
-                return True, str(mp3_file)
+            yt = YouTube(url)
 
-            return False, ""
+            # Получаем аудио поток
+            stream = yt.streams.filter(
+                only_audio=True,
+                file_extension='mp4'
+            ).order_by('abr').desc().first()
+
+            if not stream:
+                return False, "Не найдено аудио потоков"
+
+            print(f"🎵 {yt.title[:50]}...")
+
+            # Генерируем имя файла
+            filename = self._generate_filename(url, "audio", ".mp3")
+
+            # Скачиваем
+            filepath = stream.download(
+                output_path=str(self.temp_dir),
+                filename=filename.name.replace('.mp3', '.mp4')
+            )
+
+            if filepath and os.path.exists(filepath):
+                # Переименовываем в mp3
+                mp3_path = Path(filepath).with_suffix('.mp3')
+                try:
+                    os.rename(filepath, mp3_path)
+                    print(f"✅ Загружено: {mp3_path.name}")
+                    return True, str(mp3_path)
+                except:
+                    print(f"✅ Загружено: {os.path.basename(filepath)}")
+                    return True, filepath
+            else:
+                return False, "Файл не создан"
 
         except Exception as e:
-            print(f"❌ Ошибка загрузки аудио: {str(e)}")
-            return False, ""
+            print(f"❌ Ошибка: {str(e)[:100]}")
+            return False, f"Ошибка: {str(e)}"
 
     def cleanup_file(self, filepath: str):
-        """Удаление временного файла"""
+        """Удаление файла"""
         try:
-            if os.path.exists(filepath):
+            if filepath and os.path.exists(filepath):
                 os.remove(filepath)
-                print(f"🗑️ Удалён временный файл: {filepath}")
+                print(f"🗑️ Удалён файл: {os.path.basename(filepath)}")
         except Exception as e:
-            print(f"⚠️ Ошибка удаления файла: {str(e)}")
+            print(f"⚠️ Ошибка удаления: {str(e)}")
 
-    def _generate_filename(self, url: str, media_type: str) -> Path:
-        """Генерация уникального имени файла"""
-        import hashlib
-        import time
-
-        # Создаём хэш из URL и времени
-        hash_input = f"{url}_{time.time()}"
+    def _generate_filename(self, url: str, media_type: str, ext: str) -> Path:
+        """Генерация имени файла"""
+        hash_input = f"{url}_{time.time()}_{os.getpid()}"
         hash_value = hashlib.md5(hash_input.encode()).hexdigest()[:10]
-
-        ext = ".mp4" if media_type == "video" else ".mp3"
         filename = f"media_{media_type}_{hash_value}{ext}"
-
         return self.temp_dir / filename
 
-    def _detect_platform(self, url: str) -> str:
-        """Определение платформы по URL"""
-        url_lower = url.lower()
 
-        if 'youtube.com' in url_lower or 'youtu.be' in url_lower:
-            return 'youtube'
-        elif 'tiktok.com' in url_lower:
-            return 'tiktok'
-        elif 'instagram.com' in url_lower:
-            return 'instagram'
-        elif 'twitter.com' in url_lower or 'x.com' in url_lower:
-            return 'twitter'
-        elif 'facebook.com' in url_lower or 'fb.watch' in url_lower:
-            return 'facebook'
-        elif 'vimeo.com' in url_lower:
-            return 'vimeo'
-        else:
-            return 'unknown'
-
-    def _get_platform_name(self, platform: str) -> str:
-        """Получение названия платформы"""
-        platforms = {
-            'youtube': 'YouTube',
-            'tiktok': 'TikTok',
-            'instagram': 'Instagram',
-            'twitter': 'Twitter/X',
-            'facebook': 'Facebook',
-            'vimeo': 'Vimeo',
-            'unknown': 'Unknown'
-        }
-        return platforms.get(platform, 'Unknown')
-
-    def _get_available_formats(self, info: dict) -> list:
-        """Получение доступных форматов"""
-        formats = []
-        seen_heights = set()
-
-        for f in info.get('formats', []):
-            height = f.get('height')
-            if height and height not in seen_heights and f.get('vcodec') != 'none':
-                formats.append({
-                    'format_id': f.get('format_id'),
-                    'height': height,
-                    'resolution': f.get('resolution', f'{height}p'),
-                    'filesize': f.get('filesize')
-                })
-                seen_heights.add(height)
-
-        # Сортируем по высоте
-        formats.sort(key=lambda x: x['height'], reverse=True)
-        return formats[:10]  # Возвращаем первые 10 форматов
-
-
-# Глобальный экземпляр загрузчика
+# Глобальный экземпляр
 downloader = MediaDownloader()

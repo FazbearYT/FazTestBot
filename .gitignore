@@ -1,5 +1,6 @@
 export.csv
 export.json
+users.db
 .idea/
 .vscode/
 # Secrets and Configuration
