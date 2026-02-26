@@ -1,8 +1,8 @@
 # config.py
-# Конфигурация FazTestBot v4.1
+# Конфигурация FazTestBot v4.2.0
 # Модульный бот-агрегатор с безопасным хранением секретов
-# Версия: 4.1
-# Дата обновления: 22.02.2026
+# Версия: 4.2.0
+# Дата обновления: 26.02.2026
 
 # ====== ЗАГРУЗКА СЕКРЕТОВ ======
 try:
@@ -10,11 +10,14 @@ try:
         BOT_TOKEN,
         ADMINS,
         ADMIN_SECRET_CODE,
+        ADMIN_SESSION_HOURS,
         URL_SHORTENER_SERVICE,
         CUTTLY_API_KEY,
         MEDIA_DOWNLOADER_ENABLED,
         MAX_DOWNLOAD_SIZE_MB,
         MAX_DOWNLOADS_PER_USER_PER_DAY,
+        IP_INFO_API_SERVICE,
+        IPINFO_API_KEY,
         GROQ_API_KEY,
         DATABASE_PATH,
         BACKUP_DIR,
@@ -28,11 +31,14 @@ except ImportError:
     BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
     ADMINS = [123456789]
     ADMIN_SECRET_CODE = "фазбер"
+    ADMIN_SESSION_HOURS = 24
     URL_SHORTENER_SERVICE = "tinyurl"
     CUTTLY_API_KEY = ""
-    MEDIA_DOWNLOADER_ENABLED = True
+    MEDIA_DOWNLOADER_ENABLED = False
     MAX_DOWNLOAD_SIZE_MB = 50
     MAX_DOWNLOADS_PER_USER_PER_DAY = 10
+    IP_INFO_API_SERVICE = "ipapi"
+    IPINFO_API_KEY = ""
     GROQ_API_KEY = ""
     DATABASE_PATH = "users.db"
     BACKUP_DIR = "backups"
@@ -41,7 +47,7 @@ except ImportError:
     LOG_LEVEL = "INFO"
 
 # ====== ВЕРСИЯ БОТА ======
-VERSION = "4.1.1"
+VERSION = "4.2.0"
 LAST_UPDATE_DATE = "26.02.2026"
 AUTHOR = "@Fazbear_r"
 

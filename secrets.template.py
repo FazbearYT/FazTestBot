@@ -1,7 +1,7 @@
 # secrets.template.py
 # Шаблон конфиденциальных данных FazTestBot
-# Версия: 4.1
-# Дата: 21.02.2026
+# Версия: 4.2.0
+# Дата: 26.02.2026
 #
 # ИНСТРУКЦИЯ:
 # 1. Скопируйте этот файл как secrets.py
@@ -15,15 +15,20 @@ BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 # ====== ADMINISTRATION ======
 ADMINS = [123456789]  # Замените на ваш user_id
 ADMIN_SECRET_CODE = "your_secret_code_here"
+ADMIN_SESSION_HOURS = 24
 
 # ====== URL SHORTENER ======
 URL_SHORTENER_SERVICE = "tinyurl"  # "tinyurl" или "cuttly"
 CUTTLY_API_KEY = ""  # Получите на https://cutt.ly/api
 
 # ====== MEDIA DOWNLOADER ======
-MEDIA_DOWNLOADER_ENABLED = True
+MEDIA_DOWNLOADER_ENABLED = False  # ⚠️ ОТКЛЮЧЁН ПО УМОЛЧАНИЮ
 MAX_DOWNLOAD_SIZE_MB = 50
 MAX_DOWNLOADS_PER_USER_PER_DAY = 10
+
+# ====== IP INFO LOOKUP ======
+IP_INFO_API_SERVICE = "ipapi"  # "ipapi" (бесплатно, без ключа) или "ipinfo" (требует ключ)
+IPINFO_API_KEY = ""  # Получите на https://ipinfo.io (опционально)
 
 # ====== AI CHAT (для будущих версий) ======
 GROQ_API_KEY = ""  # Получите на https://console.groq.com

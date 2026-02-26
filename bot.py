@@ -1,5 +1,5 @@
 # bot.py
-# FazTestBot v4.1 — Модульный бот-агрегатор с Media Downloader
+# FazTestBot v4.2.0 — Модульный бот-агрегатор с Media Downloader
 # Точка входа — объединяет все модули воедино   
 
 import telebot
