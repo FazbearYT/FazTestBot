@@ -12,7 +12,7 @@ media_downloader_module = MediaDownloaderModule(
     name="Media Downloader",
     description="Загрузка видео/аудио из YouTube, TikTok, Instagram",
     icon="📥",
-    version="4.1.1",
+    version="1.3.1",
     callback_prefix="media_"
 )
 

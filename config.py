@@ -41,8 +41,8 @@ except ImportError:
     LOG_LEVEL = "INFO"
 
 # ====== ВЕРСИЯ БОТА ======
-VERSION = "4.1"
-LAST_UPDATE_DATE = "22.02.2026"
+VERSION = "4.1.1"
+LAST_UPDATE_DATE = "26.02.2026"
 AUTHOR = "@Fazbear_r"
 
 # ====== НАСТРОЙКИ РЕЗЕРВНОГО КОПИРОВАНИЯ ======
@@ -65,9 +65,6 @@ def validate_secrets():
 
     if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
         errors.append("❌ BOT_TOKEN не настроен в secrets.py")
-
-    if not ADMINS or ADMINS == []:
-        errors.append("⚠️ ADMINS не настроен (используется значение по умолчанию)")
 
     if errors:
         print("\n⚠️ ОШИБКИ КОНФИГУРАЦИИ:")
