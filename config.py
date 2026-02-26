@@ -47,7 +47,7 @@ except ImportError:
     LOG_LEVEL = "INFO"
 
 # ====== ВЕРСИЯ БОТА ======
-VERSION = "4.2.0"
+VERSION = "4.2.1"
 LAST_UPDATE_DATE = "26.02.2026"
 AUTHOR = "@Fazbear_r"
 

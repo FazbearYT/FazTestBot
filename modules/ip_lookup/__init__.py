@@ -12,7 +12,7 @@ ip_lookup_module = IPLookupModule(
     name="IP Info Lookup",
     description="Информация об IP адресе (страна, город, ISP)",
     icon="🌍",
-    version="1.0.1",
+    version="1.0.3",
     callback_prefix="ip_"
 )
 

@@ -13,7 +13,6 @@ from core.database import DatabaseManager
 from .keyboards import (
     ip_lookup_menu_keyboard,
     search_result_keyboard,
-    my_ip_keyboard,
     history_keyboard
 )
 from .api_client import ip_client
@@ -135,28 +134,13 @@ class IPLookupModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text="🔍 <b>Поиск IP</b>\n\n"
-                         "Отправьте IP адрес или домен:\n"
+                         "Отправьте IPv4 или IPv6 адрес:\n"
                          "• IPv4: 8.8.8.8\n"
-                         "• IPv6: 2001:4860:4860::8888\n"
-                         "• Домен: google.com",
+                         "• IPv6: 2001:4860:4860::8888",
                     reply_markup=None,
                     parse_mode="HTML"
                 )
                 bot.register_next_step_handler(call.message, self._process_ip_input, bot)
-                return
-
-            # Мой IP - ИСПРАВЛЕНО: Telegram не предоставляет IP пользователя
-            if call.data == "ip_my_ip":
-                bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text="⚠️ <b>Невозможно определить IP</b>\n\n"
-                         "Telegram не предоставляет IP адрес пользователей ботам.\n\n"
-                         "Это ограничение приватности Telegram API.\n\n"
-                         "Используйте «🔍 Поиск IP» для проверки конкретного адреса.",
-                    reply_markup=ip_lookup_menu_keyboard(),
-                    parse_mode="HTML"
-                )
                 return
 
             # История
@@ -196,7 +180,7 @@ class IPLookupModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text="🔍 <b>Поиск IP</b>\n\n"
-                         "Отправьте IP адрес или домен:",
+                         "Отправьте IPv4 или IPv6 адрес:",
                     reply_markup=None,
                     parse_mode="HTML"
                 )
@@ -280,7 +264,7 @@ class IPLookupModule(BaseModule):
         else:
             error_msg = info.get('error', 'Неизвестная ошибка')
 
-            # ИСПРАВЛЕНО: Обработка ошибки 429 (rate limit)
+            # Обработка ошибки 429 (rate limit)
             if "429" in error_msg or "rate limit" in error_msg.lower():
                 bot.edit_message_text(
                     chat_id=chat_id,
@@ -302,17 +286,17 @@ class IPLookupModule(BaseModule):
                 )
 
     def _format_ip_info(self, info: dict) -> str:
-        """Форматирование информации об IP - ИСПРАВЛЕНО: сокращение длинных полей"""
+        """Форматирование информации об IP"""
         text = "🌍 <b>Информация об IP</b>\n\n"
         text += f"📍 <b>IP:</b> <code>{info.get('ip', 'Unknown')}</code>\n"
         text += f"🏙️ <b>Город:</b> {info.get('city', 'Unknown')}\n"
         text += f"📍 <b>Регион:</b> {info.get('region', 'Unknown')}\n"
         text += f"🌐 <b>Страна:</b> {info.get('country', 'Unknown')} ({info.get('country_code', 'Unknown')})\n"
 
-        # ИСПРАВЛЕНО: Сокращаем длинный ISP
+        # Увеличен лимит до 100 символов
         isp = info.get('isp', 'Unknown')
-        if len(isp) > 60:
-            isp = isp[:60] + "..."
+        if len(isp) > 100:
+            isp = isp[:100] + "..."
         text += f"📡 <b>Провайдер:</b> {isp}\n"
 
         text += f"🕐 <b>Часовой пояс:</b> {info.get('timezone', 'Unknown')}\n"

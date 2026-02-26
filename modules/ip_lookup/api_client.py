@@ -17,7 +17,7 @@ class IPLookupClient:
 
     def validate_ip(self, ip: str) -> Tuple[bool, str]:
         """
-        Валидация IP адреса или домена
+        Валидация IP адреса (только IPv4 и IPv6)
         """
         if not ip or not ip.strip():
             return False, "❌ Запрос не может быть пустым"
@@ -40,12 +40,7 @@ class IPLookupClient:
         if re.match(ipv6_pattern, ip):
             return True, ip
 
-        # Проверка на домен
-        domain_pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$'
-        if re.match(domain_pattern, ip):
-            return True, ip
-
-        return False, "❌ Неверный формат IP адреса или домена"
+        return False, "❌ Неверный формат IP адреса. Поддерживаются только IPv4 и IPv6"
 
     async def get_ip_info(self, ip: str) -> Tuple[bool, Dict]:
         """
@@ -92,7 +87,6 @@ class IPLookupClient:
                             "asn": data.get('asn', 'Unknown'),
                             "source": "ipapi.co"
                         }
-                    # ИСПРАВЛЕНО: Обработка ошибки 429
                     elif response.status == 429:
                         return False, {"error": "❌ Превышен лимит запросов API (429). Подождите несколько минут."}
                     else:
@@ -135,10 +129,6 @@ class IPLookupClient:
             return False, {"error": "❌ Таймаут: сервис не отвечает"}
         except Exception as e:
             return False, {"error": f"❌ Ошибка: {str(e)}"}
-
-    async def get_my_ip(self) -> Tuple[bool, str]:
-        """Получение текущего IP бота - ИСПРАВЛЕНО: удалено, так как Telegram не предоставляет IP пользователя"""
-        return False, "Telegram не предоставляет IP пользователей ботам"
 
 
 # Глобальный экземпляр клиента
