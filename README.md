@@ -1,4 +1,4 @@
-git merge branch-name --allow-unrelated-histories-install the requirements
+to install the requirements try:
 
 ---bash---
 
