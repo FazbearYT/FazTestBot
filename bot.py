@@ -1,22 +1,24 @@
 # bot.py
-# FazTestBot — Модульный бот-агрегатор с Media Downloader
-# Точка входа — объединяет все модули воедино   
+# FazTestBot — Модульный бот-агрегатор
+# Точка входа — объединяет все модули воедино
 
 import telebot
-import config
 import os
 from apscheduler.schedulers.background import BackgroundScheduler
 from core.handlers import register_global_handlers
 from core.module_manager import module_manager
+from core.paths import BACKUPS_DIR, DOWNLOADS_DIR, DATABASE_PATH
 from core.backup import backup_manager
 
 # ====== ПРОВЕРКА СЕКРЕТОВ ======
+import config
+
 if not config.validate_secrets():
     print("❌ Запуск бота невозможен без настройки secrets.py")
     exit(1)
 
 # ====== СОЗДАНИЕ НЕОБХОДИМЫХ ПАПОК ======
-for directory in [config.BACKUP_DIR, config.DOWNLOADS_DIR]:
+for directory in [BACKUPS_DIR, DOWNLOADS_DIR]:
     if not os.path.exists(directory):
         os.makedirs(directory)
         print(f"📁 Создана папка: {directory}")
@@ -71,9 +73,9 @@ if __name__ == "__main__":
     print(f"\n{'=' * 50}")
     print(f"✅ FazTestBot v{config.VERSION} запущен")
     print(f"📅 Дата обновления: {config.LAST_UPDATE_DATE}")
-    print(f"💾 База данных: {config.DATABASE_PATH}")
-    print(f"🗄️ Бэкапы: {config.BACKUP_DIR} (хранение {config.BACKUP_RETENTION_COUNT} файлов)")
-    print(f"📥 Загрузки: {config.DOWNLOADS_DIR} (макс. {config.MAX_DOWNLOAD_SIZE_MB}MB)")
+    print(f"💾 База данных: {DATABASE_PATH}")
+    print(f"🗄️ Бэкапы: {BACKUPS_DIR} (хранение {config.BACKUP_RETENTION_COUNT} файлов)")
+    print(f"📥 Загрузки: {DOWNLOADS_DIR} (макс. {config.MAX_DOWNLOAD_SIZE_MB}MB)")
     print(f"🔑 Админов: {len(config.ADMINS)}")
     print(f"\n📦 Модулей загружено: {loaded_count}")
     print(f"{'=' * 50}")

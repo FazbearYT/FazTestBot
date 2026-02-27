@@ -1,12 +1,14 @@
 # core/backup.py
 # Система резервного копирования базы данных FazTestBot
 
+import sqlite3
 import os
 import shutil
-import sqlite3
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
+from typing import List, Tuple
+from pathlib import Path
 import config
+from core.paths import BACKUPS_DIR, DATABASE_PATH
 
 
 class BackupManager:
@@ -17,10 +19,9 @@ class BackupManager:
     ротация старых файлов, ручное создание бэкапов.
     """
 
-    def __init__(self):
-        """Инициализация менеджера бэкапов"""
-        self.backup_dir = config.BACKUP_DIR
-        self.db_path = config.DATABASE_PATH
+    def __init__(self, backup_dir: str = None, db_path: str = None):
+        self.backup_dir = Path(backup_dir or BACKUPS_DIR)
+        self.db_path = Path(db_path or DATABASE_PATH)
         self.retention_count = config.BACKUP_RETENTION_COUNT
         self.retention_days = config.BACKUP_RETENTION_DAYS
         self._ensure_backup_dir()

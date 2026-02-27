@@ -1,6 +1,8 @@
 # core/exceptions.py
 # Пользовательские исключения FazTestBot
 
+import sqlite3
+from typing import List
 
 class FazTestBotException(Exception):
     """Базовое исключение для бота"""
@@ -13,7 +15,7 @@ class FazTestBotException(Exception):
 
 # ====== ОШИБКИ МОДУЛЕЙ ======
 
-class ModuleNotFoundError(FazTestBotException):
+class ModuleNotFound(FazTestBotException):
     """Модуль не найден"""
 
     def __init__(self, module_id: str):
@@ -158,7 +160,7 @@ class FileError(FazTestBotException):
         self.filepath = filepath
 
 
-class FileNotFoundError(FileError):
+class FileNotFound(FileError):
     """Файл не найден"""
 
     def __init__(self, filepath: str):

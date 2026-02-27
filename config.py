@@ -7,6 +7,15 @@ VERSION = "4.2.2"
 LAST_UPDATE_DATE = "27.02.2026"
 AUTHOR = "@Fazbear_r"
 
+# ====== ОБРАТНАЯ СОВМЕСТИМОСТЬ (устарело, используйте core/paths.py) ======
+import os
+from pathlib import Path
+from core.paths import BACKUPS_DIR, DOWNLOADS_DIR, DATABASE_PATH
+
+# Устаревшие переменные - для совместимости со старым кодом
+BACKUP_DIR = BACKUPS_DIR
+DOWNLOADS_DIR = DOWNLOADS_DIR
+
 # ====== ЗАГРУЗКА СЕКРЕТОВ ======
 try:
     from secrets import (
