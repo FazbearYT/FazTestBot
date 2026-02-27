@@ -1,24 +1,71 @@
-export.csv
-export.json
-users.db
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
 .idea/
 .vscode/
-# Secrets and Configuration
+*.swp
+*.swo
+*~
+
+# ====== СЕКРЕТЫ И КОНФИДЕНЦИАЛЬНЫЕ ФАЙЛЫ ======
 secrets.py
 .env
 *.key
 *.pem
 *.crt
-backups/
-*.bak
-*.backup
-# Media downloads
+
+# ====== ВСЯ ПАПКА temp/ (БД, загрузки, экспорты, бэкапы) ======
+temp/
+database/
 downloads/
-*.mp4
-*.mp3
-*.jpg
-*.png
+exports/
+backups/
+
+# ====== Старые пути (для совместимости) ======
+users.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+*.tmp
+
 # Test files
+tests/
 test_*.py
 *_test.py
 .pytest_cache/

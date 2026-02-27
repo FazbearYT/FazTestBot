@@ -1,7 +1,5 @@
 # modules/media_downloader/keyboards.py
 # Клавиатуры модуля "Media Downloader"
-# Версия: 4.1.1
-# Дата: 22.02.2026
 
 from telebot import types
 

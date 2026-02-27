@@ -1,7 +1,5 @@
 # modules/url_shortener/handlers.py
 # Обработчики модуля "URL Shortener"
-# Версия: 1.0.4
-# Дата: 21.02.2026
 
 import asyncio
 import sqlite3

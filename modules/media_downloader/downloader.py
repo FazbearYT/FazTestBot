@@ -1,7 +1,5 @@
 # modules/media_downloader/downloader.py
 # Загрузчик медиа на основе pytubefix с обработкой ошибок
-# Версия: 4.1.1
-# Дата: 22.02.2026
 
 import os
 import time

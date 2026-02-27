@@ -1,7 +1,5 @@
 # modules/url_shortener/keyboards.py
 # Клавиатуры модуля "URL Shortener"
-# Версия: 1.0.3
-# Дата: 21.02.2026
 
 from telebot import types
 

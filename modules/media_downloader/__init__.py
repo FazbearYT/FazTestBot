@@ -1,7 +1,5 @@
 # modules/media_downloader/__init__.py
 # Модуль "Media Downloader" для FazTestBot
-# Версия: 4.1.1
-# Дата: 22.02.2026
 
 from core.module_base import BaseModule
 from .handlers import MediaDownloaderModule

@@ -1,7 +1,5 @@
 # core/handlers.py
 # Глобальные обработчики для главного меню, навигации, админ-панели и пасхалок
-# Версия: 4.0.1
-# Дата: 21.02.2026
 
 import config
 from telebot import types
@@ -242,8 +240,8 @@ def register_global_handlers(bot):
                 # Удаляем сообщение с меню пасхалки
                 try:
                     bot.delete_message(chat_id, message_id)
-                except Exception:
-                    pass  # ИСПРАВЛЕНО: конкретное исключение вместо bare except
+                except:
+                    pass
 
                 # Отправляем новое сообщение с главным меню
                 bot.send_message(
@@ -308,6 +306,8 @@ def register_global_handlers(bot):
 
         try:
             bot.answer_callback_query(call.id)
+
+            # ====== СУЩЕСТВУЮЩИЕ ФУНКЦИИ АДМИН-ПАНЕЛИ ======
 
             # Главное админ-меню
             if call.data == "admin_stats":
@@ -696,7 +696,7 @@ def register_global_handlers(bot):
                 filename = call.data.replace("admin_backup_delete_", "")
                 success, message = backup_manager.delete_backup(filename)
 
-                bot.answer_callback_query(call.id, message.replace("✅", "").replace("❌", ""), show_alert=True)
+                bot.answer_callback_query(call.id, message.replace("✅ ", "").replace("❌ ", ""), show_alert=True)
 
                 # Возвращаемся к списку бэкапов
                 backup_files = backup_manager.get_backup_list()
@@ -725,7 +725,7 @@ def register_global_handlers(bot):
                 filename = call.data.replace("admin_backup_restore_", "")
                 success, message = backup_manager.restore_backup(filename)
 
-                bot.answer_callback_query(call.id, message.replace("✅", "").replace("❌", ""), show_alert=True)
+                bot.answer_callback_query(call.id, message.replace("✅ ", "").replace("❌ ", ""), show_alert=True)
 
                 bot.edit_message_text(
                     chat_id=chat_id,

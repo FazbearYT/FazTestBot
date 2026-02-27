@@ -1,7 +1,5 @@
 # core/admin.py
 # Система скрытой админ-панели с надёжной аутентификацией
-# Версия: 4.1
-# Дата: 22.02.2026
 
 import sqlite3
 import json
@@ -9,15 +7,16 @@ import csv
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 from telebot import types
-import config
+from core.paths import EXPORTS_DIR, DATABASE_PATH
+from config import ADMINS, ADMIN_SECRET_CODE, ADMIN_SESSION_HOURS
 
 
 class AdminManager:
     """Менеджер административного доступа и функций"""
 
-    def __init__(self, db_path: str = "users.db"):
-        self.db_path = db_path
-        self.admin_sessions = {}  # {user_id: {'until': datetime}}
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path or DATABASE_PATH
+        self.admin_sessions = {}
         self._init_admin_log_table()
 
     def _init_admin_log_table(self):
@@ -40,27 +39,23 @@ class AdminManager:
         conn.close()
 
     def authenticate_by_code(self, user_id: int, code: str) -> bool:
-        """Аутентификация через секретное кодовое слово (получение статуса админа)"""
-        if code.strip() == config.ADMIN_SECRET_CODE:
-            # Создаём временную сессию на указанное количество часов
-            expires = datetime.now() + timedelta(hours=config.ADMIN_SESSION_HOURS)
+        """Аутентификация через секретное кодовое слово"""
+        if code.strip() == ADMIN_SECRET_CODE:
+            expires = datetime.now() + timedelta(hours=ADMIN_SESSION_HOURS)
             self.admin_sessions[user_id] = {'until': expires}
             self._log_admin_action(user_id, "auth_by_code", None, f"Session until {expires}")
             return True
         return False
 
     def is_admin(self, user_id: int) -> bool:
-        """Проверка прав администратора (постоянного или временного)"""
-        # Проверяем постоянных админов
-        if user_id in config.ADMINS:
+        """Проверка прав администратора"""
+        if user_id in ADMINS:
             return True
 
-        # Проверяем временные сессии
         if user_id in self.admin_sessions:
             if datetime.now() < self.admin_sessions[user_id]['until']:
                 return True
             else:
-                # Сессия истекла — удаляем
                 self.admin_sessions.pop(user_id, None)
 
         return False
@@ -70,28 +65,26 @@ class AdminManager:
         self._log_admin_action(admin_id, action, target_user_id, details)
 
     def _log_admin_action(self, admin_id: int, action: str, target_user_id: Optional[int], details: str):
-        """Внутренний метод логирования админ-действий"""
+        """Внутренний метод логирования"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         cursor.execute("""
             INSERT INTO admin_logs (admin_id, action, target_user_id, details)
             VALUES (?, ?, ?, ?)
-        """, (admin_id, action, target_user_id, details[:500]))  # Ограничиваем длину
+        """, (admin_id, action, target_user_id, details[:500]))
 
         conn.commit()
         conn.close()
 
     def get_global_stats(self) -> Dict:
-        """Получение общей статистики по всем пользователям"""
+        """Получение общей статистики"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Общее количество пользователей
         cursor.execute("SELECT COUNT(*) FROM users")
         total_users = cursor.fetchone()[0]
 
-        # Активные пользователи (за последние 7 дней)
         week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
         cursor.execute("""
             SELECT COUNT(*) FROM users 
@@ -99,11 +92,9 @@ class AdminManager:
         """, (week_ago,))
         active_users = cursor.fetchone()[0]
 
-        # Общее количество операций
         cursor.execute("SELECT COUNT(*) FROM cipher_operations")
         total_ops = cursor.fetchone()[0]
 
-        # Операции за сегодня
         today = datetime.now().strftime('%Y-%m-%d')
         cursor.execute("""
             SELECT COUNT(*) FROM cipher_operations 
@@ -111,7 +102,6 @@ class AdminManager:
         """, (today,))
         today_ops = cursor.fetchone()[0]
 
-        # Распределение по типам шифров
         cursor.execute("""
             SELECT cipher_type, COUNT(*) as count 
             FROM cipher_operations 
@@ -135,7 +125,6 @@ class AdminManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Основная информация
         cursor.execute("""
             SELECT user_id, username, full_name, created_at, last_active, module_stats
             FROM users 
@@ -147,7 +136,6 @@ class AdminManager:
             conn.close()
             return None
 
-        # Последние 5 операций
         cursor.execute("""
             SELECT cipher_type, original_text, encrypted_text, timestamp
             FROM cipher_operations 
@@ -178,11 +166,10 @@ class AdminManager:
         }
 
     def search_operations(self, query: str) -> List[Dict]:
-        """Поиск операций шифрования по ключевому слову"""
+        """Поиск операций шифрования"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Поиск по исходному тексту и результату
         cursor.execute("""
             SELECT operation_id, user_id, cipher_type, original_text, encrypted_text, timestamp
             FROM cipher_operations 
@@ -205,8 +192,14 @@ class AdminManager:
         conn.close()
         return results
 
-    def export_to_csv(self, filename: str = "export.csv"):
-        """Экспорт всех операций в CSV"""
+    def export_to_csv(self, filename: str = None) -> str:
+        """Экспорт всех операций в CSV - ИСПРАВЛЕНО: сохранение в temp/exports/"""
+        if not filename:
+            filename = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+        # ИСПРАВЛЕНО: Сохранение в temp/exports/
+        filepath = EXPORTS_DIR / filename
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -216,17 +209,23 @@ class AdminManager:
             ORDER BY timestamp DESC
         """)
 
-        with open(filename, 'w', newline='', encoding='utf-8') as f:
+        with open(filepath, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(
                 ['timestamp', 'user_id', 'cipher_type', 'original_text', 'encrypted_text', 'language', 'step'])
             writer.writerows(cursor.fetchall())
 
         conn.close()
-        return filename
+        return str(filepath)
 
-    def export_to_json(self, filename: str = "export.json"):
-        """Экспорт всех операций в JSON"""
+    def export_to_json(self, filename: str = None) -> str:
+        """Экспорт всех операций в JSON - ИСПРАВЛЕНО: сохранение в temp/exports/"""
+        if not filename:
+            filename = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+        # ИСПРАВЛЕНО: Сохранение в temp/exports/
+        filepath = EXPORTS_DIR / filename
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -250,14 +249,14 @@ class AdminManager:
                 "step": row[7]
             })
 
-        with open(filename, 'w', encoding='utf-8') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(operations, f, ensure_ascii=False, indent=2)
 
         conn.close()
-        return filename
+        return str(filepath)
 
     def cleanup_logs(self, days: int):
-        """Ручная очистка логов старше указанного количества дней"""
+        """Ручная очистка логов"""
         if days <= 0:
             return 0
 
@@ -277,18 +276,17 @@ class AdminManager:
         return deleted
 
     def emergency_clear_all(self):
-        """Экстренная полная очистка ВСЕХ логов (требует подтверждения)"""
+        """Экстренная полная очистка"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Очищаем операции
         cursor.execute("DELETE FROM cipher_operations")
         ops_deleted = cursor.rowcount
 
-        # ИСПРАВЛЕНО: SQL injection - используем параметризованный запрос
-        if config.ADMINS:
-            placeholders = ','.join(['?' for _ in config.ADMINS])
-            cursor.execute(f"DELETE FROM users WHERE user_id NOT IN ({placeholders})", config.ADMINS)
+        # ИСПРАВЛЕНО: SQL injection через параметризованный запрос
+        if ADMINS:
+            placeholders = ','.join(['?' for _ in ADMINS])
+            cursor.execute(f"DELETE FROM users WHERE user_id NOT IN ({placeholders})", ADMINS)
         else:
             cursor.execute("DELETE FROM users")
 
@@ -300,5 +298,5 @@ class AdminManager:
         return ops_deleted, users_deleted
 
 
-# Глобальный экземпляр админ-менеджера
+# Глобальный экземпляр
 admin_manager = AdminManager()

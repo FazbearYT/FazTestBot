@@ -1,7 +1,5 @@
 # core/backup.py
 # Система резервного копирования базы данных FazTestBot
-# Версия: 3.6
-# Дата: 19.02.2026
 
 import os
 import shutil

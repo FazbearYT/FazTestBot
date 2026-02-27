@@ -1,7 +1,5 @@
 # modules/ip_lookup/__init__.py
 # Модуль "IP Info Lookup" для FazTestBot
-# Версия: 1.0.1
-# Дата: 26.02.2026
 
 from core.module_base import BaseModule
 from .handlers import IPLookupModule

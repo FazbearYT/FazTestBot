@@ -1,7 +1,5 @@
 # modules/ip_lookup/config.py
 # Конфигурация модуля "IP Info Lookup"
-# Версия: 1.0.0
-# Дата: 26.02.2026
 
 import config
 

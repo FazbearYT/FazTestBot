@@ -1,7 +1,5 @@
 # modules/media_downloader/config.py
 # Конфигурация модуля "Media Downloader"
-# Версия: 4.1.1 - МОДУЛЬ ОТКЛЮЧЁН
-# Дата: 22.02.2026
 
 import config
 

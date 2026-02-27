@@ -1,8 +1,11 @@
 # config.py
-# Конфигурация FazTestBot v4.2.0
+# Конфигурация FazTestBot
 # Модульный бот-агрегатор с безопасным хранением секретов
-# Версия: 4.2.0
-# Дата обновления: 26.02.2026
+
+# ====== ВЕРСИЯ БОТА (ЕДИНЫЙ ИСТОЧНИК) ======
+VERSION = "4.2.2"
+LAST_UPDATE_DATE = "27.02.2026"
+AUTHOR = "@Fazbear_r"
 
 # ====== ЗАГРУЗКА СЕКРЕТОВ ======
 try:
@@ -19,14 +22,10 @@ try:
         IP_INFO_API_SERVICE,
         IPINFO_API_KEY,
         GROQ_API_KEY,
-        DATABASE_PATH,
-        BACKUP_DIR,
-        DOWNLOADS_DIR,
         LOG_RETENTION_DAYS,
         LOG_LEVEL
     )
 except ImportError:
-    # Fallback для разработки (НЕ использовать в продакшене!)
     print("⚠️ WARNING: secrets.py not found! Using fallback values.")
     BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
     ADMINS = [123456789]
@@ -40,16 +39,8 @@ except ImportError:
     IP_INFO_API_SERVICE = "ipapi"
     IPINFO_API_KEY = ""
     GROQ_API_KEY = ""
-    DATABASE_PATH = "users.db"
-    BACKUP_DIR = "backups"
-    DOWNLOADS_DIR = "downloads"
     LOG_RETENTION_DAYS = 30
     LOG_LEVEL = "INFO"
-
-# ====== ВЕРСИЯ БОТА ======
-VERSION = "4.2.1"
-LAST_UPDATE_DATE = "26.02.2026"
-AUTHOR = "@Fazbear_r"
 
 # ====== НАСТРОЙКИ РЕЗЕРВНОГО КОПИРОВАНИЯ ======
 BACKUP_ENABLED = True

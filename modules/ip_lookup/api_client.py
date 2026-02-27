@@ -1,7 +1,5 @@
 # modules/ip_lookup/api_client.py
 # API клиент для сервисов IP Info
-# Версия: 1.0.1
-# Дата: 26.02.2026
 
 import aiohttp
 from typing import Optional, Dict, Tuple

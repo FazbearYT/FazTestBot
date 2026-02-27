@@ -1,6 +1,5 @@
 # core/easter_eggs.py
 # Логика пасхалок и секретных функций
-# Дата обновления: 18.02.2026
 
 from datetime import datetime, timedelta
 from typing import Optional, Dict

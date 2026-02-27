@@ -1,7 +1,5 @@
 # core/module_base.py
 # Базовый класс для всех модулей FazTestBot
-# Версия: 3.5
-# Дата: 19.02.2026
 
 from abc import ABC, abstractmethod
 from telebot import types

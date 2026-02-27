@@ -1,7 +1,5 @@
 # core/module_manager.py
 # Менеджер модулей с автодискавери
-# Версия: 3.5
-# Дата: 19.02.2026
 
 import os
 import importlib

@@ -1,8 +1,6 @@
 # modules/cipher/handlers.py
-# Обработчики модуля "Шифратор" для FazTestBot v4.0.1
+# Обработчики модуля "Шифратор" для FazTestBot
 # Адаптирован под BaseModule с унифицированным интерфейсом
-# Версия: 4.0.1
-# Дата: 21.02.2026
 
 import qrcode
 import os

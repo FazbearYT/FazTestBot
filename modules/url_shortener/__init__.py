@@ -1,7 +1,5 @@
 # modules/url_shortener/__init__.py
 # Модуль "URL Shortener" для FazTestBot
-# Версия: 4.0
-# Дата: 25.02.2026
 
 from core.module_base import BaseModule
 from .handlers import URLShortenerModule

@@ -1,7 +1,5 @@
 # modules/ip_lookup/keyboards.py
 # Клавиатуры модуля "IP Info Lookup"
-# Версия: 1.0.1
-# Дата: 26.02.2026
 
 from telebot import types
 
