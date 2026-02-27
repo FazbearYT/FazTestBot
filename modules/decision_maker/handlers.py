@@ -1,5 +1,6 @@
 # modules/decision_maker/handlers.py
 # Обработчики модуля "Decision Maker"
+# Версия: 4.3.1
 
 import random
 import sqlite3
@@ -16,7 +17,8 @@ from .keyboards import (
     result_keyboard,
     list_options_keyboard
 )
-from .data.heroes import DOTA2_HEROES, get_random_hero, get_heroes_by_attribute
+from .data.heroes import ALL_HEROES, get_random_hero, get_heroes_by_attribute, get_hero_attribute, \
+    get_attribute_name_ru, HEROES_COUNT
 from .config import (
     MAX_RANDOM_RANGE,
     MAX_LIST_ITEMS,
@@ -138,7 +140,14 @@ class DecisionMakerModule(BaseModule):
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text="🎲 <b>Decision Maker</b>\n\nВыберите действие:",
+                    text="🎲 <b>Decision Maker</b>\n\n"
+                         "Инструменты для принятия решений:\n\n"
+                         "🎲 <b>Генератор чисел</b> — случайное число в диапазоне\n"
+                         "📝 <b>Выбор из списка</b> — случайный элемент из вашего списка\n"
+                         "⚔️ <b>Dota 2 герои</b> — случайный герой для игры\n"
+                         "🪙 <b>Монетка</b> — орёл или решка\n\n"
+                         f"Лимит: {MAX_DAILY_USES} использований/день\n\n"
+                         "Выберите действие:",
                     reply_markup=decision_maker_menu_keyboard(),
                     parse_mode="HTML"
                 )
@@ -165,6 +174,7 @@ class DecisionMakerModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text="📝 <b>Выбор из списка</b>\n\n"
+                         "Для начала работы нажмите кнопку «📝 Ввести список»:\n\n"
                          "Отправьте список вариантов через запятую:\n\n"
                          "<i>Пример: пицца, суши, бургер, салат</i>",
                     reply_markup=list_options_keyboard(),
@@ -179,7 +189,7 @@ class DecisionMakerModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text="⚔️ <b>Dota 2 Герои</b>\n\n"
-                         f"Всего героев: {len(DOTA2_HEROES)}\n\n"
+                         f"Всего героев: {HEROES_COUNT}\n\n"
                          "Выберите способ выбора:",
                     reply_markup=dota2_hero_keyboard(),
                     parse_mode="HTML"
@@ -227,6 +237,11 @@ class DecisionMakerModule(BaseModule):
                     min_val, max_val = range_map[call.data]
                     result = random.randint(min_val, max_val)
 
+                    # Сохраняем для повтора
+                    self.set_user_state(chat_id, 'last_action', 'numbers')
+                    self.set_user_state(chat_id, 'last_min', min_val)
+                    self.set_user_state(chat_id, 'last_max', max_val)
+
                     self._log_action(chat_id, 'random_number', str(result), f"{min_val}-{max_val}")
 
                     bot.edit_message_text(
@@ -244,8 +259,10 @@ class DecisionMakerModule(BaseModule):
             if call.data.startswith("dm_dota2_"):
                 if call.data == "dm_dota2_random":
                     hero = get_random_hero()
-                    attribute = self._get_hero_attribute(hero)
+                    attribute = get_hero_attribute(hero)
+                    attribute_name = get_attribute_name_ru(attribute)
 
+                    self.set_user_state(chat_id, 'last_action', 'dota2')
                     self._log_action(chat_id, 'dota2_hero', hero, attribute)
 
                     bot.edit_message_text(
@@ -253,8 +270,8 @@ class DecisionMakerModule(BaseModule):
                         message_id=message_id,
                         text=f"⚔️ <b>Случайный герой</b>\n\n"
                              f"🦸 <b>{hero}</b>\n"
-                             f"Атрибут: {attribute}\n\n"
-                             f"Всего героев: {len(DOTA2_HEROES)}",
+                             f"Атрибут: {attribute_name}\n\n"
+                             f"Всего героев: {HEROES_COUNT}",
                         reply_markup=result_keyboard("dm_dota2"),
                         parse_mode="HTML"
                     )
@@ -264,7 +281,8 @@ class DecisionMakerModule(BaseModule):
                 attribute_map = {
                     "dm_dota2_strength": ("strength", "💪 Сила"),
                     "dm_dota2_agility": ("agility", "🗡️ Ловкость"),
-                    "dm_dota2_intel": ("intelligence", "🧠 Интеллект")
+                    "dm_dota2_intel": ("intelligence", "🧠 Интеллект"),
+                    "dm_dota2_universal": ("universal", "⚡ Универсал")
                 }
 
                 if call.data in attribute_map:
@@ -272,6 +290,7 @@ class DecisionMakerModule(BaseModule):
                     heroes = get_heroes_by_attribute(attr_key)
                     hero = random.choice(heroes)
 
+                    self.set_user_state(chat_id, 'last_action', 'dota2')
                     self._log_action(chat_id, 'dota2_hero', hero, attr_key)
 
                     bot.edit_message_text(
@@ -291,6 +310,7 @@ class DecisionMakerModule(BaseModule):
                 result = random.choice(COIN_SIDES)
                 emoji = "🦅" if result == "Орёл" else "🪙"
 
+                self.set_user_state(chat_id, 'last_action', 'coin')
                 self._log_action(chat_id, 'coin_flip', result, "")
                 self._update_coin_stats(chat_id, result)
 
@@ -326,7 +346,24 @@ class DecisionMakerModule(BaseModule):
                 )
                 return
 
-            # Повтор
+            # ====== ВВОД СПИСКА ======
+            if call.data == "dm_list_input":
+                self.set_user_state(chat_id, 'action', 'list')
+                self.set_user_state(chat_id, 'list_state', 'waiting_input')
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="📝 <b>Ввод списка</b>\n\n"
+                         "Отправьте варианты через запятую:\n\n"
+                         "<i>Пример: пицца, суши, бургер, салат</i>\n\n"
+                         "Или нажмите «🔙 Отмена»",
+                    reply_markup=None,
+                    parse_mode="HTML"
+                )
+                bot.register_next_step_handler_by_chat_id(chat_id, self._process_list_input, bot)
+                return
+
+            # ====== ПОВТОР ======
             if call.data == "dm_again":
                 action = self.get_user_state(chat_id, 'last_action')
 
@@ -346,14 +383,15 @@ class DecisionMakerModule(BaseModule):
                     )
                 elif action == 'dota2':
                     hero = get_random_hero()
-                    attribute = self._get_hero_attribute(hero)
+                    attribute = get_hero_attribute(hero)
+                    attribute_name = get_attribute_name_ru(attribute)
 
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
                         text=f"⚔️ <b>Случайный герой</b>\n\n"
                              f"🦸 <b>{hero}</b>\n"
-                             f"Атрибут: {attribute}",
+                             f"Атрибут: {attribute_name}",
                         reply_markup=result_keyboard("dm_dota2"),
                         parse_mode="HTML"
                     )
@@ -371,6 +409,40 @@ class DecisionMakerModule(BaseModule):
                         reply_markup=result_keyboard("dm_coin"),
                         parse_mode="HTML"
                     )
+                elif action == 'list':
+                    items = self.get_user_state(chat_id, 'last_list', [])
+                    if items:
+                        result = random.choice(items)
+
+                        # Формируем сообщение
+                        items_text = ", ".join(items[:10])
+                        if len(items) > 10:
+                            items_text += f" ... и ещё {len(items) - 10}"
+
+                        bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            text=f"📝 <b>Выбор из списка</b>\n\n"
+                                 f"Варианты ({len(items)}): {items_text}\n\n"
+                                 f"🎲 <b>Результат:</b>\n"
+                                 f"<b>{result}</b>",
+                            reply_markup=result_keyboard("dm_list"),
+                            parse_mode="HTML"
+                        )
+                    else:
+                        bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            text="⚠️ Список пуст. Введите новый список.",
+                            reply_markup=list_options_keyboard(),
+                            parse_mode="HTML"
+                        )
+                else:
+                    bot.answer_callback_query(
+                        call.id,
+                        "⚠️ Нет предыдущего действия",
+                        show_alert=True
+                    )
                 return
 
         except Exception as e:
@@ -383,6 +455,92 @@ class DecisionMakerModule(BaseModule):
     def get_menu_keyboard(self) -> types.InlineKeyboardMarkup:
         """Клавиатура меню"""
         return decision_maker_menu_keyboard()
+
+    def _process_list_input(self, message, bot):
+        """Обработка ввода списка"""
+        chat_id = message.chat.id
+        text = message.text.strip()
+
+        # Проверяем состояние
+        list_state = self.get_user_state(chat_id, 'list_state')
+        if list_state != 'waiting_input':
+            bot.send_message(
+                chat_id,
+                "⚠️ Сессия устарела. Вернитесь в меню и нажмите «📝 Ввести список»",
+                reply_markup=decision_maker_menu_keyboard()
+            )
+            return
+
+        try:
+            # Удаляем сообщение пользователя
+            try:
+                bot.delete_message(chat_id, message.message_id)
+            except:
+                pass
+
+            # Парсим список
+            items = [item.strip() for item in text.split(',') if item.strip()]
+
+            if not items:
+                bot.send_message(
+                    chat_id,
+                    "❌ Список пуст. Отправьте варианты через запятую.\n\n"
+                    "<i>Пример: пицца, суши, бургер</i>",
+                    reply_markup=list_options_keyboard(),
+                    parse_mode="HTML"
+                )
+                return
+
+            if len(items) > MAX_LIST_ITEMS:
+                bot.send_message(
+                    chat_id,
+                    f"❌ Слишком много элементов (макс. {MAX_LIST_ITEMS}).\n\n"
+                    f"Вы отправили: {len(items)}",
+                    reply_markup=list_options_keyboard()
+                )
+                return
+
+            if len(items) < 2:
+                bot.send_message(
+                    chat_id,
+                    "❌ Нужно минимум 2 варианта для выбора.\n\n"
+                    f"Вы отправили: {len(items)}",
+                    reply_markup=list_options_keyboard()
+                )
+                return
+
+            # Выбираем случайный элемент
+            result = random.choice(items)
+
+            # Сохраняем для повтора
+            self.set_user_state(chat_id, 'last_action', 'list')
+            self.set_user_state(chat_id, 'last_list', items)
+
+            self._log_action(chat_id, 'list_choice', result, f"{len(items)} items")
+
+            # Формируем сообщение
+            items_text = ", ".join(items[:10])
+            if len(items) > 10:
+                items_text += f" ... и ещё {len(items) - 10}"
+
+            message_id = self.get_user_state(chat_id, 'message_id')
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"📝 <b>Выбор из списка</b>\n\n"
+                     f"Варианты ({len(items)}): {items_text}\n\n"
+                     f"🎲 <b>Результат:</b>\n"
+                     f"<b>{result}</b>",
+                reply_markup=result_keyboard("dm_list"),
+                parse_mode="HTML"
+            )
+
+        except Exception as e:
+            bot.send_message(
+                chat_id,
+                f"❌ Ошибка: {str(e)[:100]}",
+                reply_markup=list_options_keyboard()
+            )
 
     def _process_custom_range(self, message, bot):
         """Обработка пользовательского диапазона"""
@@ -459,36 +617,6 @@ class DecisionMakerModule(BaseModule):
                 f"❌ Ошибка: {str(e)[:100]}",
                 reply_markup=number_range_keyboard()
             )
-
-    def _get_hero_attribute(self, hero: str) -> str:
-        """Определение атрибута героя"""
-        strength_heroes = [
-            "Axe", "Beastmaster", "Bristleback", "Centaur Warrunner", "Chaos Knight",
-            "Clockwerk", "Doom", "Dragon Knight", "Earth Spirit", "Earthshaker",
-            "Elder Titan", "Huskar", "Io", "Kunkka", "Legion Commander", "Lifestealer",
-            "Lycan", "Magnus", "Marci", "Mars", "Night Stalker", "Omniknight",
-            "Phoenix", "Primal Beast", "Pudge", "Sand King", "Slardar", "Snapfire",
-            "Spirit Breaker", "Sven", "Tidehunter", "Timbersaw", "Tiny", "Treant Protector",
-            "Tusk", "Underlord", "Undying", "Wraith King"
-        ]
-
-        agility_heroes = [
-            "Anti-Mage", "Arc Warden", "Bloodseeker", "Bounty Hunter", "Broodmother",
-            "Clinkz", "Drow Ranger", "Ember Spirit", "Faceless Void", "Gyrocopter",
-            "Hoodwink", "Juggernaut", "Lone Druid", "Luna", "Medusa", "Meepo",
-            "Mirana", "Monkey King", "Morphling", "Naga Siren", "Nyx Assassin",
-            "Pangolier", "Phantom Assassin", "Phantom Lancer", "Razor", "Riki",
-            "Shadow Fiend", "Slark", "Sniper", "Spectre", "Templar Assassin",
-            "Terrorblade", "Troll Warlord", "Ursa", "Vengeful Spirit", "Venomancer",
-            "Viper", "Weaver"
-        ]
-
-        if hero in strength_heroes:
-            return "💪 Сила"
-        elif hero in agility_heroes:
-            return "🗡️ Ловкость"
-        else:
-            return "🧠 Интеллект"
 
     def _log_action(self, user_id: int, action_type: str, result: str, details: str):
         """Логирование действия"""
