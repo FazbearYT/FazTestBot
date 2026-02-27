@@ -1,6 +1,5 @@
 # modules/decision_maker/keyboards.py
 # Клавиатуры модуля "Decision Maker"
-# Версия: 4.3.1
 
 from telebot import types
 
@@ -38,13 +37,18 @@ def number_range_keyboard():
 def dota2_hero_keyboard():
     """Клавиатура для выбора героя Dota 2"""
     kb = types.InlineKeyboardMarkup(row_width=2)
+    # Первые 4 кнопки - атрибуты
     kb.add(
-        types.InlineKeyboardButton("🎲 Случайный", callback_data="dm_dota2_random"),
         types.InlineKeyboardButton("💪 Сила", callback_data="dm_dota2_strength"),
         types.InlineKeyboardButton("🗡️ Ловкость", callback_data="dm_dota2_agility"),
         types.InlineKeyboardButton("🧠 Интеллект", callback_data="dm_dota2_intel"),
         types.InlineKeyboardButton("⚡ Универсал", callback_data="dm_dota2_universal")
     )
+    # Затем случайный выбор
+    kb.add(
+        types.InlineKeyboardButton("🎲 Случайный", callback_data="dm_dota2_random")
+    )
+    # Внизу назад
     kb.add(
         types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_menu")
     )

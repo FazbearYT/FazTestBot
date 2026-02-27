@@ -10,7 +10,7 @@ decision_maker_module = DecisionMakerModule(
     name="Decision Maker",
     description="Генератор случайных чисел, монетка, Dota 2 герои",
     icon="🎲",
-    version="1.0.0",
+    version="1.0.4",
     callback_prefix="dm_"
 )
 

@@ -1,51 +1,52 @@
 # modules/decision_maker/data/heroes.py
 # Список героев Dota 2 (актуально на февраль 2026)
-# Всего: 126 героев
+# Всего: 127 героев
 # Источник: cybersport.metaratings.ru
 
 DOTA2_HEROES = {
-    # СИЛА (Strength) - 35 героев
+    # СИЛА (Strength) - 36 героев
     "strength": [
-        "Alchemist", "Axe", "Beastmaster", "Bristleback", "Centaur Warrunner",
+        "Alchemist", "Axe", "Bristleback", "Centaur Warrunner",
         "Chaos Knight", "Clockwerk", "Dawnbreaker", "Doom", "Dragon Knight",
         "Earth Spirit", "Earthshaker", "Elder Titan", "Huskar", "Kunkka",
-        "Legion Commander", "Lifestealer", "Lycan", "Magnus", "Marci",
-        "Mars", "Night Stalker", "Omniknight", "Phoenix", "Primal Beast",
-        "Pudge", "Sand King", "Slardar", "Snapfire", "Spirit Breaker",
-        "Sven", "Tidehunter", "Timbersaw", "Tiny", "Treant Protector",
-        "Tusk", "Underlord", "Undying", "Wraith King"
+        "Legion Commander", "Lifestealer", "Largo", "Lycan",
+        "Mars", "Night Stalker", "Omniknight", "Ogre Magi", "Phoenix",
+        "Primal Beast", "Pudge", "Slardar",
+        "Spirit Breaker", "Sven", "Tidehunter", "Timbersaw", "Tiny",
+        "Treant Protector", "Tusk", "Underlord", "Undying", "Wraith King"
     ],
 
     # ЛОВКОСТЬ (Agility) - 34 героя
     "agility": [
-        "Anti-Mage", "Arc Warden", "Bloodseeker", "Bounty Hunter", "Broodmother",
+        "Anti-Mage", "Bloodseeker", "Bounty Hunter", "Broodmother",
         "Clinkz", "Drow Ranger", "Ember Spirit", "Faceless Void", "Gyrocopter",
         "Hoodwink", "Juggernaut", "Kez", "Lone Druid", "Luna",
         "Medusa", "Meepo", "Mirana", "Monkey King", "Morphling",
-        "Naga Siren", "Nyx Assassin", "Pangolier", "Phantom Assassin", "Phantom Lancer",
+        "Naga Siren", "Phantom Assassin", "Phantom Lancer",
         "Razor", "Riki", "Shadow Fiend", "Slark", "Sniper",
-        "Spectre", "Templar Assassin", "Terrorblade", "Troll Warlord",
-        "Ursa", "Vengeful Spirit", "Venomancer", "Viper", "Weaver"
+        "Spectre","Templar Assassin", "Terrorblade", "Troll Warlord",
+        "Ursa", "Vengeful Spirit", "Viper", "Weaver"
     ],
 
     # ИНТЕЛЛЕКТ (Intelligence) - 34 героя
     "intelligence": [
-        "Ancient Apparition", "Bane", "Batrider", "Chen", "Crystal Maiden",
-        "Dark Seer", "Dark Willow", "Dazzle", "Death Prophet", "Disruptor",
-        "Enchantress", "Enigma", "Grimstroke", "Invoker", "Jakiro",
+        "Ancient Apparition", "Crystal Maiden",
+        "Dark Willow", "Disruptor", "Chen", "Dark Seer",
+        "Enchantress", "Grimstroke", "Invoker", "Jakiro",
         "Keeper of the Light", "Leshrac", "Lich", "Lina", "Lion",
-        "Muerta", "Nature's Prophet", "Necrophos", "Ogre Magi", "Oracle",
-        "Outworld Destroyer", "Puck", "Pugna", "Queen of Pain", "Rubick",
+        "Muerta", "Necrophos",  "Oracle", "Outworld Destroyer",
+        "Puck", "Pugna", "Queen of Pain", "Ringmaster", "Rubick",
         "Shadow Demon", "Shadow Shaman", "Silencer", "Skywrath Mage",
-        "Storm Spirit", "Techies", "Tinker", "Visage", "Void Spirit",
-        "Warlock", "Windranger", "Winter Wyvern", "Witch Doctor", "Zeus"
+        "Storm Spirit",  "Tinker", "Warlock",
+        "Winter Wyvern", "Witch Doctor", "Zeus"
     ],
 
     # УНИВЕРСАЛ (Universal) - 23 героя
     "universal": [
-        "Abaddon", "Arc Warden", "Bane", "Batrider", "Beastmaster",
-        "Brewmaster", "Dazzle", "Death Prophet", "Dragon Knight", "Earth Spirit",
-        "Enigma", "Io", "Phoenix", "Winter Wyvern"
+        "Abaddon", "Arc Warden", "Bane", "Batrider", "Beastmaster", "Windranger",
+        "Brewmaster", "Marci", "Magnus", "Venomancer", "Dazzle", "Nyx Assassin",
+        "Nature's Prophet", "Death Prophet", "Snapfire", "Pangolier", "Void Spirit",
+        "Enigma", "Visage", "Io", "Sand King","Techies", "Winter Wyvern"
     ]
 }
 
