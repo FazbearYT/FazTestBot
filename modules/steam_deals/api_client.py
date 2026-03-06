@@ -4,6 +4,7 @@
 import aiohttp
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Tuple
 from .config import (
@@ -63,6 +64,27 @@ class SteamDealsClient:
 
         return age.total_seconds() < CACHE_TTL_SECONDS
 
+    def extract_steam_app_id(self, url: str) -> Optional[str]:
+        """
+        Извлечение Steam App ID из URL
+
+        :param url: Ссылка на игру в Steam
+        :return: App ID или None
+        """
+        # Паттерны для разных форматов ссылок Steam
+        patterns = [
+            r'steamcommunity\.com/app/(\d+)',
+            r'store\.steampowered\.com/app/(\d+)',
+            r'steamdb\.com/app/(\d+)',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+
+        return None
+
     async def search_games(self, query: str) -> List[Dict]:
         """
         Поиск игр по названию
@@ -71,20 +93,60 @@ class SteamDealsClient:
         :return: Список найденных игр
         """
         try:
+            # Проверяем, не является ли запрос ссылкой
+            app_id = self.extract_steam_app_id(query)
+            if app_id:
+                # Если это ссылка, получаем информацию об игре по App ID
+                game_info = await self.get_game_info_by_app_id(app_id)
+                if game_info:
+                    return [game_info]
+                return []
+
+            # Обычный поиск по названию
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                        f"{self.base_url}/games",
-                        params={"title": query, "limit": 10},
+                        f"{self.base_url}/search",
+                        params={"query": query, "limit": 10},
                         timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
-                        return data[:10]  # Ограничиваем 10 результатами
+                        # CheapShark search возвращает список с полями: gameID, external, internal, thumb
+                        return data[:10]
                     else:
                         return []
         except Exception as e:
             print(f"❌ Ошибка поиска игр: {str(e)}")
             return []
+
+    async def get_game_info_by_app_id(self, app_id: str) -> Optional[Dict]:
+        """
+        Получение информации об игре по Steam App ID
+
+        :param app_id: Steam App ID
+        :return: Информация об игре
+        """
+        try:
+            # Используем Steam API для получения названия
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                        f"http://store.steampowered.com/api/appdetails?appids={app_id}",
+                        timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get(app_id, {}).get('success'):
+                            game_data = data[app_id]['data']
+                            return {
+                                'gameID': app_id,
+                                'external': game_data.get('name', 'Unknown'),
+                                'internal': game_data.get('name', 'Unknown'),
+                                'thumb': game_data.get('header_image', '')
+                            }
+            return None
+        except Exception as e:
+            print(f"❌ Ошибка получения информации по App ID: {str(e)}")
+            return None
 
     async def get_game_deals(self, game_id: str) -> List[Dict]:
         """
@@ -107,54 +169,6 @@ class SteamDealsClient:
                         return []
         except Exception as e:
             print(f"❌ Ошибка получения сделок: {str(e)}")
-            return []
-
-    async def get_popular_deals(self) -> List[Dict]:
-        """
-        Получение популярных скидок
-
-        :return: Список популярных сделок
-        """
-        cache_key = "popular_deals"
-
-        # Проверяем кэш
-        if self._is_cache_valid(cache_key):
-            print("📦 Используем кэш для популярных скидок")
-            return self.cache[cache_key]
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                        f"{self.base_url}/deals",
-                        params={
-                            "storeID": "1",  # Steam
-                            "lowerPrice": "0",
-                            "upperPrice": "10000",
-                            "pageSize": MAX_DEALS_DISPLAY,
-                            "sortBy": "Popularity",
-                            "desc": "1"
-                        },
-                        timeout=aiohttp.ClientTimeout(total=15)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-
-                        # Фильтруем по минимальной скидке
-                        filtered = [
-                            deal for deal in data
-                            if float(deal.get('savings', 0)) >= MIN_DISCOUNT_PERCENT
-                        ]
-
-                        # Сохраняем в кэш
-                        self.cache[cache_key] = filtered[:MAX_DEALS_DISPLAY]
-                        self.cache_timestamp[cache_key] = datetime.now().isoformat()
-                        self._save_cache()
-
-                        return filtered[:MAX_DEALS_DISPLAY]
-                    else:
-                        return []
-        except Exception as e:
-            print(f"❌ Ошибка получения популярных скидок: {str(e)}")
             return []
 
     async def get_free_games(self) -> List[Dict]:

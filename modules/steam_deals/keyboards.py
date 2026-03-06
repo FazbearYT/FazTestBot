@@ -9,9 +9,7 @@ def steam_main_menu_keyboard():
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("📜 Мой вишлист", callback_data="steam_wishlist"),
-        types.InlineKeyboardButton("🔥 Популярные скидки", callback_data="steam_popular"),
         types.InlineKeyboardButton("🎁 Бесплатно", callback_data="steam_free"),
-        types.InlineKeyboardButton("➕ Добавить игру", callback_data="steam_add"),
         types.InlineKeyboardButton("🔙 Назад", callback_data="steam_back_to_modules")
     )
     return kb
@@ -19,32 +17,23 @@ def steam_main_menu_keyboard():
 
 def wishlist_keyboard(is_empty: bool = False):
     """Клавиатура для вишлиста"""
-    kb = types.InlineKeyboardMarkup(row_width=3)
+    kb = types.InlineKeyboardMarkup(row_width=2)
 
     if not is_empty:
         kb.add(
             types.InlineKeyboardButton("🔄 Обновить цены", callback_data="steam_wishlist_refresh"),
+            types.InlineKeyboardButton("➕ Добавить игру", callback_data="steam_add_from_wishlist")
+        )
+        kb.add(
             types.InlineKeyboardButton("❌ Удалить игру", callback_data="steam_wishlist_delete"),
             types.InlineKeyboardButton("🔙 Назад", callback_data="steam_back_to_menu")
         )
     else:
         kb.add(
+            types.InlineKeyboardButton("➕ Добавить игру", callback_data="steam_add_from_wishlist"),
             types.InlineKeyboardButton("🔙 Назад", callback_data="steam_back_to_menu")
         )
 
-    return kb
-
-
-def popular_deals_keyboard():
-    """Клавиатура для популярных скидок"""
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        types.InlineKeyboardButton("🔄 Обновить", callback_data="steam_popular_refresh"),
-        types.InlineKeyboardButton("➕ Добавить из списка", callback_data="steam_add_from_popular")
-    )
-    kb.add(
-        types.InlineKeyboardButton("🔙 В меню", callback_data="steam_back_to_menu")
-    )
     return kb
 
 

@@ -11,7 +11,6 @@ from core.database import DatabaseManager
 from .keyboards import (
     steam_main_menu_keyboard,
     wishlist_keyboard,
-    popular_deals_keyboard,
     free_games_keyboard,
     add_game_keyboard,
     search_results_keyboard,
@@ -36,7 +35,6 @@ class SteamDealsModule(BaseModule):
 
     Поддерживает:
     - Вишлист с отслеживанием цен
-    - Популярные скидки
     - Бесплатные игры
     - Поиск и добавление игр
     """
@@ -88,6 +86,9 @@ class SteamDealsModule(BaseModule):
         message_id = call.message.message_id
 
         self.set_user_state(chat_id, 'message_id', message_id)
+        # Сбрасываем состояние действия
+        self.set_user_state(chat_id, 'action', None)
+        self.set_user_state(chat_id, 'search_results', None)
 
         bot.edit_message_text(
             chat_id=chat_id,
@@ -95,9 +96,7 @@ class SteamDealsModule(BaseModule):
             text="🎮 <b>Steam Deals Tracker</b>\n\n"
                  "Отслеживание скидок на игры в Steam:\n\n"
                  "📜 <b>Мой вишлист</b> — отслеживаемые игры\n"
-                 "🔥 <b>Популярные скидки</b> — лучшие предложения\n"
-                 "🎁 <b>Бесплатно</b> — игры 100% OFF\n"
-                 "➕ <b>Добавить игру</b> — поиск и добавление\n\n"
+                 "🎁 <b>Бесплатно</b> — игры 100% OFF\n\n"
                  "Выберите действие:",
             reply_markup=self.get_menu_keyboard(),
             parse_mode="HTML"
@@ -110,6 +109,10 @@ class SteamDealsModule(BaseModule):
 
         try:
             bot.answer_callback_query(call.id)
+
+            # Сбрасываем состояние при любом действии с клавиатурой
+            self.set_user_state(chat_id, 'action', None)
+            self.set_user_state(chat_id, 'search_results', None)
 
             # Назад к списку модулей
             if call.data == "steam_back_to_modules":
@@ -167,34 +170,22 @@ class SteamDealsModule(BaseModule):
                     reply_markup=confirm_delete_keyboard(),
                     parse_mode="HTML"
                 )
+                bot.register_next_step_handler_by_chat_id(chat_id, self._handle_delete_input, bot)
                 return
 
-            # Популярные скидки
-            if call.data == "steam_popular":
-                self._show_popular_deals(bot, chat_id, message_id)
-                return
-
-            # Обновить популярные
-            if call.data == "steam_popular_refresh":
-                # Очищаем кэш
-                steam_client.cache.pop("popular_deals", None)
-                steam_client.cache_timestamp.pop("popular_deals", None)
-                steam_client._save_cache()
-
-                self._show_popular_deals(bot, chat_id, message_id)
-                return
-
-            # Добавить из популярных
-            if call.data == "steam_add_from_popular":
-                self.set_user_state(chat_id, 'action', 'add_from_popular')
+            # Добавить игру из вишлиста
+            if call.data == "steam_add_from_wishlist":
+                self.set_user_state(chat_id, 'action', 'add_game')
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text="➕ <b>Добавление из списка</b>\n\n"
-                         "Введите номер игры из списка для добавления в вишлист:",
-                    reply_markup=popular_deals_keyboard(),
+                    text="➕ <b>Добавить игру</b>\n\n"
+                         "Введите название игры или ссылку на Steam:\n\n"
+                         "<i>Пример: Cyberpunk 2077</i>",
+                    reply_markup=add_game_keyboard(),
                     parse_mode="HTML"
                 )
+                bot.register_next_step_handler_by_chat_id(chat_id, self._handle_add_input, bot)
                 return
 
             # Бесплатные игры
@@ -209,26 +200,14 @@ class SteamDealsModule(BaseModule):
                 steam_client.cache_timestamp.pop("free_games", None)
                 steam_client._save_cache()
 
+                # Показываем заново с правильным message_id
                 self._show_free_games(bot, chat_id, message_id)
                 return
 
-            # Добавить игру
-            if call.data == "steam_add":
-                self.set_user_state(chat_id, 'action', 'add_game')
-                bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text="➕ <b>Добавить игру</b>\n\n"
-                         "Введите название игры или ссылку на Steam:\n\n"
-                         "<i>Пример: Cyberpunk 2077</i>",
-                    reply_markup=add_game_keyboard(),
-                    parse_mode="HTML"
-                )
-                return
-
-            # Обработка текстового ввода
-            if call.data == "steam_handle_input":
-                # Этот колбэк обрабатывается в message_handler
+            # Добавить конкретную игру
+            if call.data.startswith("steam_add_game_"):
+                game_id = call.data.replace("steam_add_game_", "")
+                self._add_game_by_id(bot, chat_id, message_id, game_id)
                 return
 
         except Exception as e:
@@ -296,62 +275,6 @@ class SteamDealsModule(BaseModule):
                 parse_mode="HTML"
             )
 
-    def _show_popular_deals(self, bot: Any, chat_id: int, message_id: int):
-        """Показ популярных скидок"""
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            deals = loop.run_until_complete(steam_client.get_popular_deals())
-            loop.close()
-
-            if not deals:
-                bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text="🔥 <b>Популярные скидки</b>\n\n"
-                         "⚠️ Нет доступных данных.\n\n"
-                         "Попробуйте позже.",
-                    reply_markup=popular_deals_keyboard(),
-                    parse_mode="HTML"
-                )
-                return
-
-            # Формируем список
-            text = "🔥 <b>Популярные скидки</b>\n\n"
-            text += f"Всего: {len(deals)}\n\n"
-
-            for i, deal in enumerate(deals[:20], 1):
-                name = deal.get('title', 'Unknown')[:40]
-                price = steam_client.format_price(float(deal.get('salePrice', 0)))
-                discount = steam_client.format_discount(float(deal.get('savings', 0)) * 100)
-
-                # Проверка на исторический минимум
-                alert = ""
-                normal_price = float(deal.get('normalPrice', 0))
-                sale_price = float(deal.get('salePrice', 0))
-                if normal_price > 0 and sale_price > 0:
-                    if steam_client.check_price_alert(sale_price, normal_price * 0.5):
-                        alert = " ⚠️"
-
-                text += f"{i}. {name} | {price} ({discount}){alert}\n"
-
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=text,
-                reply_markup=popular_deals_keyboard(),
-                parse_mode="HTML"
-            )
-
-        except Exception as e:
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=f"❌ <b>Ошибка</b>\n\nСервис временно недоступен.\n\n{str(e)[:100]}",
-                reply_markup=steam_main_menu_keyboard(),
-                parse_mode="HTML"
-            )
-
     def _show_free_games(self, bot: Any, chat_id: int, message_id: int):
         """Показ бесплатных игр"""
         try:
@@ -365,8 +288,8 @@ class SteamDealsModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text="🎁 <b>Бесплатно (100% OFF)</b>\n\n"
-                         "⚠️ Нет доступных данных.\n\n"
-                         "Попробуйте позже.",
+                         "⚠️ Сейчас нет бесплатных игр.\n\n"
+                         "Загляните позже!",
                     reply_markup=free_games_keyboard(),
                     parse_mode="HTML"
                 )
@@ -377,7 +300,8 @@ class SteamDealsModule(BaseModule):
             text += f"Всего: {len(games)}\n\n"
 
             for i, game in enumerate(games[:20], 1):
-                name = game.get('title', 'Unknown')[:40]
+                # Используем external или title для названия
+                name = game.get('external', game.get('title', 'Unknown'))[:50]
                 text += f"{i}. {name}\n"
 
             bot.edit_message_text(
@@ -395,6 +319,298 @@ class SteamDealsModule(BaseModule):
                 text=f"❌ <b>Ошибка</b>\n\nСервис временно недоступен.\n\n{str(e)[:100]}",
                 reply_markup=steam_main_menu_keyboard(),
                 parse_mode="HTML"
+            )
+
+    def _handle_delete_input(self, message, bot):
+        """Обработка ввода номера игры для удаления"""
+        chat_id = message.chat.id
+
+        # Сбрасываем состояние
+        self.set_user_state(chat_id, 'action', None)
+
+        # Удаляем сообщение пользователя
+        try:
+            bot.delete_message(chat_id, message.message_id)
+        except:
+            pass
+
+        try:
+            game_number = int(message.text.strip())
+            message_id = self.get_user_state(chat_id, 'message_id')
+
+            if self._remove_game_from_wishlist(chat_id, game_number):
+                if message_id:
+                    self._show_wishlist(bot, chat_id, message_id)
+                else:
+                    bot.send_message(
+                        chat_id,
+                        "✅ Игра удалена из вишлиста!",
+                        reply_markup=steam_main_menu_keyboard()
+                    )
+            else:
+                bot.send_message(
+                    chat_id,
+                    "❌ Неверный номер игры. Попробуйте снова.",
+                    reply_markup=steam_main_menu_keyboard()
+                )
+        except ValueError:
+            bot.send_message(
+                chat_id,
+                "❌ Введите корректный номер (число).",
+                reply_markup=steam_main_menu_keyboard()
+            )
+        except Exception as e:
+            bot.send_message(
+                chat_id,
+                f"❌ Ошибка: {str(e)[:100]}",
+                reply_markup=steam_main_menu_keyboard()
+            )
+
+    def _handle_add_input(self, message, bot):
+        """Обработка ввода названия игры"""
+        chat_id = message.chat.id
+        query = message.text.strip()
+
+        # Сбрасываем состояние
+        self.set_user_state(chat_id, 'action', None)
+
+        # Удаляем сообщение пользователя
+        try:
+            bot.delete_message(chat_id, message.message_id)
+        except:
+            pass
+
+        message_id = self.get_user_state(chat_id, 'message_id')
+
+        # Поиск игры
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        results = loop.run_until_complete(steam_client.search_games(query))
+        loop.close()
+
+        if not results:
+            if message_id:
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="❌ <b>Игра не найдена</b>\n\n"
+                         "Попробуйте другой запрос.\n\n"
+                         f"Запрос: {query[:50]}",
+                    reply_markup=add_game_keyboard(),
+                    parse_mode="HTML"
+                )
+            else:
+                bot.send_message(
+                    chat_id,
+                    "❌ Игра не найдена. Попробуйте другой запрос.",
+                    reply_markup=steam_main_menu_keyboard()
+                )
+            return
+
+        # Если найдена одна игра
+        if len(results) == 1:
+            game = results[0]
+            game_id = game.get('gameID')
+            # Используем external вместо title
+            game_name = game.get('external', game.get('title', 'Unknown'))
+
+            # Добавляем в вишлист
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            deals = loop.run_until_complete(steam_client.get_game_deals(game_id))
+            loop.close()
+
+            current_price = 0
+            historical_low = 0
+            discount_percent = 0
+
+            if deals:
+                deal = deals[0]
+                current_price = float(deal.get('salePrice', 0))
+                historical_low = float(deal.get('lowestPrice', 0))
+                discount_percent = float(deal.get('savings', 0)) * 100
+
+            if self._add_game_to_wishlist(chat_id, game_id, game_name, current_price, historical_low, discount_percent):
+                if message_id:
+                    bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=f"✅ <b>Игра добавлена</b>\n\n"
+                             f"🎮 {game_name}\n"
+                             f"💰 {steam_client.format_price(current_price)}\n"
+                             f"📉 Скидка: {steam_client.format_discount(discount_percent)}\n\n"
+                             "Добавлена в вишлист!",
+                        reply_markup=wishlist_keyboard(),
+                        parse_mode="HTML"
+                    )
+                else:
+                    bot.send_message(
+                        chat_id,
+                        f"✅ Игра '{game_name}' добавлена в вишлист!",
+                        reply_markup=steam_main_menu_keyboard()
+                    )
+            else:
+                bot.send_message(
+                    chat_id,
+                    "❌ Не удалось добавить игру. Возможно, она уже в вишлисте.",
+                    reply_markup=steam_main_menu_keyboard()
+                )
+        else:
+            # Показываем список вариантов
+            text = "🔍 <b>Найдено несколько игр</b>\n\n"
+            text += "Выберите номер игры:\n\n"
+
+            for i, game in enumerate(results[:10], 1):
+                # Используем external вместо title
+                name = game.get('external', game.get('title', 'Unknown'))[:40]
+                text += f"{i}. {name}\n"
+
+            if message_id:
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=text,
+                    reply_markup=add_game_keyboard(),
+                    parse_mode="HTML"
+                )
+            else:
+                bot.send_message(
+                    chat_id,
+                    text,
+                    reply_markup=steam_main_menu_keyboard()
+                )
+
+            # Ожидаем выбор пользователя
+            self.set_user_state(chat_id, 'action', 'select_game')
+            self.set_user_state(chat_id, 'search_results', results)
+            bot.register_next_step_handler_by_chat_id(chat_id, self._handle_game_selection, bot)
+
+    def _handle_game_selection(self, message, bot):
+        """Обработка выбора игры из списка"""
+        chat_id = message.chat.id
+
+        # Сбрасываем состояние
+        self.set_user_state(chat_id, 'action', None)
+        self.set_user_state(chat_id, 'search_results', None)
+
+        # Удаляем сообщение пользователя
+        try:
+            bot.delete_message(chat_id, message.message_id)
+        except:
+            pass
+
+        try:
+            game_index = int(message.text.strip()) - 1
+            results = self.get_user_state(chat_id, 'search_results', [])
+
+            if game_index < 0 or game_index >= len(results):
+                bot.send_message(
+                    chat_id,
+                    "❌ Неверный номер. Попробуйте снова.",
+                    reply_markup=steam_main_menu_keyboard()
+                )
+                return
+
+            game = results[game_index]
+            game_id = game.get('gameID')
+            game_name = game.get('external', game.get('title', 'Unknown'))
+
+            # Получаем детали игры
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            deals = loop.run_until_complete(steam_client.get_game_deals(game_id))
+            loop.close()
+
+            current_price = 0
+            historical_low = 0
+            discount_percent = 0
+
+            if deals:
+                deal = deals[0]
+                current_price = float(deal.get('salePrice', 0))
+                historical_low = float(deal.get('lowestPrice', 0))
+                discount_percent = float(deal.get('savings', 0)) * 100
+
+            if self._add_game_to_wishlist(chat_id, game_id, game_name, current_price, historical_low, discount_percent):
+                bot.send_message(
+                    chat_id,
+                    f"✅ Игра '{game_name}' добавлена в вишлист!",
+                    reply_markup=steam_main_menu_keyboard()
+                )
+            else:
+                bot.send_message(
+                    chat_id,
+                    "❌ Не удалось добавить игру. Возможно, она уже в вишлисте.",
+                    reply_markup=steam_main_menu_keyboard()
+                )
+
+        except ValueError:
+            bot.send_message(
+                chat_id,
+                "❌ Введите корректный номер (число).",
+                reply_markup=steam_main_menu_keyboard()
+            )
+        except Exception as e:
+            bot.send_message(
+                chat_id,
+                f"❌ Ошибка: {str(e)[:100]}",
+                reply_markup=steam_main_menu_keyboard()
+            )
+
+    def _add_game_by_id(self, bot: Any, chat_id: int, message_id: int, game_id: str):
+        """Добавление игры по ID"""
+        try:
+            # Получаем детали игры
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            game_info = loop.run_until_complete(steam_client.get_game_details(game_id))
+            loop.close()
+
+            if not game_info:
+                bot.answer_callback_query(
+                    bot.current_call.id if hasattr(bot, 'current_call') else 0,
+                    "❌ Не удалось получить информацию об игре",
+                    show_alert=True
+                )
+                return
+
+            game_name = game_info.get('info', {}).get('title', 'Unknown')
+
+            # Получаем сделки
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            deals = loop.run_until_complete(steam_client.get_game_deals(game_id))
+            loop.close()
+
+            current_price = 0
+            historical_low = 0
+            discount_percent = 0
+
+            if deals:
+                deal = deals[0]
+                current_price = float(deal.get('salePrice', 0))
+                historical_low = float(deal.get('lowestPrice', 0))
+                discount_percent = float(deal.get('savings', 0)) * 100
+
+            if self._add_game_to_wishlist(chat_id, game_id, game_name, current_price, historical_low, discount_percent):
+                bot.answer_callback_query(
+                    bot.current_call.id if hasattr(bot, 'current_call') else 0,
+                    f"✅ {game_name} добавлена в вишлист!",
+                    show_alert=False
+                )
+                self._show_wishlist(bot, chat_id, message_id)
+            else:
+                bot.answer_callback_query(
+                    bot.current_call.id if hasattr(bot, 'current_call') else 0,
+                    "❌ Игра уже в вишлисте",
+                    show_alert=True
+                )
+
+        except Exception as e:
+            bot.answer_callback_query(
+                bot.current_call.id if hasattr(bot, 'current_call') else 0,
+                f"❌ Ошибка: {str(e)[:60]}",
+                show_alert=True
             )
 
     def _get_user_wishlist(self, user_id: int) -> list:
