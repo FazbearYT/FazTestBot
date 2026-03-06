@@ -2,19 +2,14 @@
 # Конфигурация FazTestBot
 # Модульный бот-агрегатор с безопасным хранением секретов
 
+# ====== ИМПОРТ ПУТЕЙ ======
+from core.paths import DATABASE_PATH, DOWNLOADS_DIR, BACKUPS_DIR, TEMP_DIR, EXPORTS_DIR
+
+
 # ====== ВЕРСИЯ БОТА (ЕДИНЫЙ ИСТОЧНИК) ======
-VERSION = "4.3.2"
-LAST_UPDATE_DATE = "27.02.2026"
+VERSION = "4.4.0"
+LAST_UPDATE_DATE = "06.02.2026"
 AUTHOR = "@Fazbear_r"
-
-# ====== ОБРАТНАЯ СОВМЕСТИМОСТЬ (устарело, используйте core/paths.py) ======
-import os
-from pathlib import Path
-from core.paths import BACKUPS_DIR, DOWNLOADS_DIR, DATABASE_PATH
-
-# Устаревшие переменные - для совместимости со старым кодом
-BACKUP_DIR = BACKUPS_DIR
-DOWNLOADS_DIR = DOWNLOADS_DIR
 
 # ====== ЗАГРУЗКА СЕКРЕТОВ ======
 try:
@@ -31,6 +26,7 @@ try:
         IP_INFO_API_SERVICE,
         IPINFO_API_KEY,
         GROQ_API_KEY,
+        CHEAPSHARK_API_KEY,
         LOG_RETENTION_DAYS,
         LOG_LEVEL
     )
@@ -48,6 +44,7 @@ except ImportError:
     IP_INFO_API_SERVICE = "ipapi"
     IPINFO_API_KEY = ""
     GROQ_API_KEY = ""
+    CHEAPSHARK_API_KEY = ""
     LOG_RETENTION_DAYS = 30
     LOG_LEVEL = "INFO"
 

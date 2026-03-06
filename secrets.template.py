@@ -28,6 +28,9 @@ MAX_DOWNLOADS_PER_USER_PER_DAY = 10
 IP_INFO_API_SERVICE = "ipapi"  # "ipapi" (бесплатно, без ключа) или "ipinfo" (требует ключ)
 IPINFO_API_KEY = ""  # Получите на https://ipinfo.io (опционально)
 
+# ====== STEAM DEALS TRACKER ======
+CHEAPSHARK_API_KEY = ""  # Получите на https://www.cheapshark.com/api (опционально)
+
 # ====== AI CHAT (для будущих версий) ======
 GROQ_API_KEY = ""  # Получите на https://console.groq.com
 
