@@ -3,221 +3,152 @@ import time
 import yt_dlp
 from pathlib import Path
 from typing import Optional, Dict, Tuple, Callable
-from .config import TEMP_DIR, FFMPEG_PATH, VIDEO_QUALITIES, AUDIO_QUALITIES
+from .config import (
+    MODULE_TEMP_DIR,
+    FFMPEG_PATH,
+    VIDEO_QUALITIES,
+    AUDIO_QUALITIES,
+    MAX_RETRIES
+)
 
 
 class MediaDownloader:
-    """Загрузчик медиа на основе yt-dlp"""
+    """Ядро загрузки на основе yt-dlp"""
 
     def __init__(self):
-        self.temp_dir = Path(TEMP_DIR)
+        self.temp_dir = Path(MODULE_TEMP_DIR)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
     def get_video_info(self, url: str) -> Optional[Dict]:
-        """Получение информации о видео"""
+        """Получение метаданных без скачивания"""
         try:
-            print(f"🔍 Получение информации о видео...")
-
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
                 'extract_flat': False,
                 'socket_timeout': 30,
                 'retries': 3,
+                'ffmpeg_location': str(FFMPEG_PATH) if FFMPEG_PATH.exists() else None,
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
 
-                if not info:
-                    return None
+            if not info:
+                return None
 
-                duration = info.get('duration', 0)
-                if duration:
-                    minutes = duration // 60
-                    seconds = duration % 60
-                    duration_str = f"{minutes}:{seconds:02d}"
-                else:
-                    duration_str = "Unknown"
+            duration = info.get('duration', 0)
+            duration_str = f"{duration // 60}:{duration % 60:02d}" if duration else "00:00"
 
-                return {
-                    'title': info.get('title', 'Unknown'),
-                    'duration': duration,
-                    'duration_str': duration_str,
-                    'thumbnail': info.get('thumbnail'),
-                    'platform': info.get('extractor', 'youtube'),
-                    'platform_name': info.get('extractor_key', 'YouTube'),
-                    'uploader': info.get('uploader', 'Unknown'),
-                    'view_count': info.get('view_count', 0),
-                    'url': url,
-                    'id': info.get('id', ''),
-                }
-
+            return {
+                'title': info.get('title', 'Unknown'),
+                'duration': duration,
+                'duration_str': duration_str,
+                'thumbnail': info.get('thumbnail'),
+                'platform': info.get('extractor_key', 'Unknown'),
+                'uploader': info.get('uploader', 'Unknown'),
+                'filesize': info.get('filesize'),
+                'filesize_approx': info.get('filesize_approx'),
+                'url': url,
+                'id': info.get('id', '')
+            }
         except Exception as e:
-            print(f"❌ Ошибка получения информации: {str(e)[:100]}")
+            print(f"❌ Info error: {str(e)[:100]}")
             return None
 
     def download_video(self, url: str, quality: str = "720p",
                        progress_callback: Callable = None) -> Tuple[bool, str]:
-        """Загрузка видео"""
-        max_retries = 3
+        """Скачивание видео с конвертацией в MP4"""
+        format_str = VIDEO_QUALITIES.get(quality, VIDEO_QUALITIES["720p"])["format"]
+        return self._download(url, format_str, "video", progress_callback)
+
+    def download_audio(self, url: str, quality: str = "192",
+                       progress_callback: Callable = None) -> Tuple[bool, str]:
+        """Скачивание аудио с конвертацией в MP3"""
+        format_str = "bestaudio/best"
+        return self._download(url, format_str, "audio", progress_callback, audio_quality=quality)
+
+    def _download(self, url: str, format_str: str, media_type: str,
+                  progress_callback: Callable, audio_quality: str = None) -> Tuple[bool, str]:
+        """Универсальная логика скачивания"""
+        max_retries = MAX_RETRIES
 
         for attempt in range(max_retries):
             try:
-                print(f"\n📥 Загрузка видео (качество: {quality})... (попытка {attempt + 1}/{max_retries})")
-
-                # Получаем формат из конфига
-                format_str = VIDEO_QUALITIES.get(quality, VIDEO_QUALITIES["720p"])["format"]
-
-                # Путь для сохранения
-                filename = f"video_{int(time.time())}_%(id)s.%(ext)s"
+                filename = f"{media_type}_{int(time.time())}_%(id)s.%(ext)s"
                 output_template = str(self.temp_dir / filename)
 
-                def progress_hook(d):
+                def hook(d):
                     if d['status'] == 'downloading':
                         total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
                         downloaded = d.get('downloaded_bytes', 0)
-
                         if total and progress_callback:
-                            percent = int((downloaded / total) * 100)
-                            speed = d.get('_speed_str', 'N/A')
+                            pct = int((downloaded / total) * 100)
+                            spd = d.get('_speed_str', 'N/A')
                             eta = d.get('_eta_str', 'N/A')
-                            progress_callback(percent, f"{percent}% | {speed} | ETA: {eta}")
-
+                            progress_callback(pct, f"{pct}% | {spd} | ETA: {eta}")
                     elif d['status'] == 'finished':
                         if progress_callback:
-                            progress_callback(90, "Обработка видео...")
+                            progress_callback(95, "Финализация файла...")
 
                 ydl_opts = {
                     'format': format_str,
                     'outtmpl': output_template,
-                    'progress_hooks': [progress_hook],
+                    'progress_hooks': [hook],
                     'quiet': True,
                     'no_warnings': True,
-                    'ffmpeg_location': FFMPEG_PATH if os.path.exists(FFMPEG_PATH) else None,
-                    'postprocessors': [{
-                        'key': 'FFmpegVideoConvertor',
-                        'preferedformat': 'mp4',
-                    }],
+                    'ffmpeg_location': str(FFMPEG_PATH) if FFMPEG_PATH.exists() else None,
                     'socket_timeout': 30,
                     'retries': 3,
                     'fragment_retries': 3,
                 }
 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-
-                    # Получаем путь к файлу
-                    filepath = ydl.prepare_filename(info)
-
-                    # Меняем расширение на mp4 если нужно
-                    if not filepath.endswith('.mp4'):
-                        filepath = Path(filepath).with_suffix('.mp4')
-
-                    if filepath and os.path.exists(filepath):
-                        file_size = os.path.getsize(filepath)
-                        print(f"✅ Видео загружено: {os.path.basename(filepath)} ({file_size / 1024 / 1024:.1f}MB)")
-                        return True, filepath
-                    else:
-                        return False, "Файл не создан после загрузки"
-
-            except Exception as e:
-                error_msg = str(e)
-                print(f"❌ Ошибка (попытка {attempt + 1}): {error_msg[:100]}")
-
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 5
-                    print(f"⏰ Повторная попытка через {wait_time} сек...")
-                    time.sleep(wait_time)
+                # Постпроцессоры в зависимости от типа
+                if media_type == "video":
+                    ydl_opts['postprocessors'] = [{
+                        'key': 'FFmpegVideoConvertor',
+                        'preferedformat': 'mp4',
+                    }]
                 else:
-                    return False, f"Ошибка загрузки: {error_msg[:200]}"
-
-        return False, "Не удалось загрузить видео"
-
-    def download_audio(self, url: str, quality: str = "192",
-                       progress_callback: Callable = None) -> Tuple[bool, str]:
-        """Загрузка аудио (MP3)"""
-        max_retries = 3
-
-        for attempt in range(max_retries):
-            try:
-                print(f"\n🎵 Загрузка аудио (качество: {quality} kbps)... (попытка {attempt + 1}/{max_retries})")
-
-                # Путь для сохранения
-                filename = f"audio_{int(time.time())}_%(id)s.%(ext)s"
-                output_template = str(self.temp_dir / filename)
-
-                def progress_hook(d):
-                    if d['status'] == 'downloading':
-                        total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                        downloaded = d.get('downloaded_bytes', 0)
-
-                        if total and progress_callback:
-                            percent = int((downloaded / total) * 100)
-                            speed = d.get('_speed_str', 'N/A')
-                            eta = d.get('_eta_str', 'N/A')
-                            progress_callback(percent, f"{percent}% | {speed} | ETA: {eta}")
-
-                    elif d['status'] == 'finished':
-                        if progress_callback:
-                            progress_callback(90, "Конвертация в MP3...")
-
-                ydl_opts = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': output_template,
-                    'progress_hooks': [progress_hook],
-                    'quiet': True,
-                    'no_warnings': True,
-                    'ffmpeg_location': FFMPEG_PATH if os.path.exists(FFMPEG_PATH) else None,
-                    'postprocessors': [{
+                    ydl_opts['postprocessors'] = [{
                         'key': 'FFmpegExtractAudio',
                         'preferredcodec': 'mp3',
-                        'preferredquality': quality,
-                    }],
-                    'socket_timeout': 30,
-                    'retries': 3,
-                }
+                        'preferredquality': audio_quality or '192',
+                    }]
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
-
-                    # Получаем путь к файлу
                     filepath = ydl.prepare_filename(info)
 
-                    # Меняем расширение на mp3
-                    if not filepath.endswith('.mp3'):
+                    # Корректировка расширения
+                    if media_type == "video" and not filepath.endswith('.mp4'):
+                        filepath = Path(filepath).with_suffix('.mp4')
+                    elif media_type == "audio" and not filepath.endswith('.mp3'):
                         filepath = Path(filepath).with_suffix('.mp3')
 
                     if filepath and os.path.exists(filepath):
-                        file_size = os.path.getsize(filepath)
-                        print(f"✅ Аудио загружено: {os.path.basename(filepath)} ({file_size / 1024 / 1024:.1f}MB)")
                         return True, filepath
-                    else:
-                        return False, "Файл не создан после загрузки"
+                    return False, "Файл не создан после загрузки"
 
             except Exception as e:
                 error_msg = str(e)
-                print(f"❌ Ошибка (попытка {attempt + 1}): {error_msg[:100]}")
+                print(f"❌ Download error (attempt {attempt + 1}): {error_msg[:100]}")
 
                 if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 5
-                    print(f"⏰ Повторная попытка через {wait_time} сек...")
-                    time.sleep(wait_time)
+                    time.sleep((attempt + 1) * 3)
                 else:
                     return False, f"Ошибка загрузки: {error_msg[:200]}"
 
-        return False, "Не удалось загрузить аудио"
+        return False, "Не удалось загрузить"
 
     def cleanup_file(self, filepath: str):
-        """Удаление файла"""
+        """Безопасное удаление файла"""
         try:
             if filepath and os.path.exists(filepath):
                 os.remove(filepath)
-                print(f"🗑️ Удалён файл: {os.path.basename(filepath)}")
-        except Exception as e:
-            print(f"⚠️ Ошибка удаления: {str(e)}")
+        except Exception:
+            pass
 
 
-#Глобальный
-#экземпляр
+# Глобальный экземпляр
 downloader = MediaDownloader()

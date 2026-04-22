@@ -37,6 +37,48 @@ def quality_keyboard(media_type: str):
     return kb
 
 
+def large_file_keyboard():
+    """
+    Клавиатура для больших файлов (>50MB)
+    Исправлено: убран параметр video_info (не использовался)
+    """
+    kb = types.InlineKeyboardMarkup(row_width=1)
+
+    # Кнопки снижения качества
+    kb.add(
+        types.InlineKeyboardButton(
+            "📥 Скачать в 360p (~15-30MB)",
+            callback_data="media_large_file_360p"
+        ),
+        types.InlineKeyboardButton(
+            "📥 Скачать в 480p (~30-50MB)",
+            callback_data="media_large_file_480p"
+        )
+    )
+
+    # Кнопки загрузки на файлообменники
+    kb.add(
+        types.InlineKeyboardButton(
+            "☁️ Загрузить на tmpfiles.org (до 2GB)",
+            callback_data="media_upload_tmpfiles"
+        ),
+        types.InlineKeyboardButton(
+            "☁️ Загрузить на gofile.io (без лимита)",
+            callback_data="media_upload_gofile"
+        )
+    )
+
+    # Отмена
+    kb.add(
+        types.InlineKeyboardButton(
+            "❌ Отменить",
+            callback_data="media_back_to_menu"
+        )
+    )
+
+    return kb
+
+
 def result_keyboard():
     """Клавиатура после успешной загрузки"""
     kb = types.InlineKeyboardMarkup(row_width=2)

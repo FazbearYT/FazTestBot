@@ -1,6 +1,3 @@
-# core/database.py
-# Менеджер базы данных для логирования пользователей и операций шифрования
-
 import sqlite3
 import json
 import uuid
@@ -10,7 +7,7 @@ from core.paths import DATABASE_PATH
 
 
 class DatabaseManager:
-    """Менеджер базы данных пользователей и операций шифрования"""
+    """Менеджер базы данных пользователей и операций"""
 
     def __init__(self, db_path: str = None, retention_days: int = 30):
         self.db_path = db_path or DATABASE_PATH
@@ -63,10 +60,32 @@ class DatabaseManager:
             )
         """)
 
+        # ===== НОВОЕ: Таблица загрузок медиа =====
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS media_downloader_logs (
+                log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                url TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                platform TEXT,
+                title TEXT,
+                file_path TEXT,
+                file_size INTEGER,
+                quality TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+            )
+        """)
+
         # Индексы для ускорения поиска
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON cipher_operations(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON cipher_operations(timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cipher_type ON cipher_operations(cipher_type)")
+
+        # Индексы для медиа-загрузок
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_user_id ON media_downloader_logs(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_timestamp ON media_downloader_logs(created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_platform ON media_downloader_logs(platform)")
 
         conn.commit()
         conn.close()
@@ -80,17 +99,28 @@ class DatabaseManager:
         cursor = conn.cursor()
 
         cutoff_date = datetime.now() - timedelta(days=self.retention_days)
+        cutoff_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
+
+        # Очистка операций шифрования
         cursor.execute("""
             DELETE FROM cipher_operations 
             WHERE timestamp < ?
-        """, (cutoff_date.strftime('%Y-%m-%d %H:%M:%S'),))
+        """, (cutoff_str,))
+        cipher_deleted = cursor.rowcount
 
-        deleted = cursor.rowcount
+        # Очистка логов медиа-загрузок
+        cursor.execute("""
+            DELETE FROM media_downloader_logs 
+            WHERE created_at < ?
+        """, (cutoff_str,))
+        media_deleted = cursor.rowcount
+
         conn.commit()
         conn.close()
 
-        if deleted > 0:
-            print(f"🧹 Очищено {deleted} старых записей логов")
+        total_deleted = cipher_deleted + media_deleted
+        if total_deleted > 0:
+            print(f"🧹 Очищено {total_deleted} старых записей логов")
 
     def create_or_update_user(self, user_id: int, username: Optional[str] = None,
                               first_name: Optional[str] = None, last_name: Optional[str] = None):
@@ -376,3 +406,102 @@ class DatabaseManager:
 
         conn.close()
         return results
+
+    # ===== МЕТОДЫ ДЛЯ MEDIA DOWNLOADER =====
+
+    def log_media_download(self, user_id: int, url: str, media_type: str,
+                           platform: str, title: str, file_path: str,
+                           file_size: int, quality: str):
+        """
+        Логирование успешной загрузки медиа
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO media_downloader_logs 
+            (user_id, url, media_type, platform, title, file_path, file_size, quality)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, url, media_type, platform, title, file_path, file_size, quality))
+
+        conn.commit()
+        conn.close()
+
+    def get_user_media_downloads(self, user_id: int, limit: int = 10) -> List[Dict]:
+        """
+        Получение истории загрузок пользователя
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT url, media_type, platform, title, file_size, quality, created_at
+            FROM media_downloader_logs
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (user_id, limit))
+
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                "url": row[0],
+                "media_type": row[1],
+                "platform": row[2],
+                "title": row[3],
+                "file_size": row[4],
+                "quality": row[5],
+                "created_at": row[6]
+            })
+
+        conn.close()
+        return results
+
+    def get_media_download_stats(self, user_id: int) -> Dict:
+        """
+        Получение статистики загрузок пользователя
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Всего загрузок
+        cursor.execute("""
+            SELECT COUNT(*) FROM media_downloader_logs WHERE user_id = ?
+        """, (user_id,))
+        total_downloads = cursor.fetchone()[0]
+
+        # По платформам
+        cursor.execute("""
+            SELECT platform, COUNT(*) as count 
+            FROM media_downloader_logs 
+            WHERE user_id = ?
+            GROUP BY platform
+            ORDER BY count DESC
+        """, (user_id,))
+        platform_distribution = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # По типам
+        cursor.execute("""
+            SELECT media_type, COUNT(*) as count 
+            FROM media_downloader_logs 
+            WHERE user_id = ?
+            GROUP BY media_type
+        """, (user_id,))
+        type_distribution = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # Сегодня
+        today = datetime.now().strftime('%Y-%m-%d')
+        cursor.execute("""
+            SELECT COUNT(*) FROM media_downloader_logs 
+            WHERE user_id = ? AND DATE(created_at) = ?
+        """, (user_id, today))
+        today_downloads = cursor.fetchone()[0]
+
+        conn.close()
+
+        return {
+            "total_downloads": total_downloads,
+            "platform_distribution": platform_distribution,
+            "type_distribution": type_distribution,
+            "today_downloads": today_downloads
+        }
