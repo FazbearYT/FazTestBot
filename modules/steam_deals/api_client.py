@@ -102,7 +102,7 @@ class SteamDealsClient:
                     return [game_info]
                 return []
 
-            # Обычный поиск по названию
+            # Обычный поиск по названию через CheapShark
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                         f"{self.base_url}/search",
@@ -127,7 +127,20 @@ class SteamDealsClient:
         :return: Информация об игре
         """
         try:
-            # Используем Steam API для получения названия
+            # Сначала пробуем получить через CheapShark
+            async with aiohttp.ClientSession() as session:
+                # Ищем игру в CheapShark
+                async with session.get(
+                        f"{self.base_url}/search",
+                        params={"query": app_id, "limit": 1},
+                        timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data:
+                            return data[0]
+
+            # Если не нашли, пробуем Steam API
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                         f"http://store.steampowered.com/api/appdetails?appids={app_id}",
