@@ -1,35 +1,28 @@
-# modules/media_downloader/keyboards.py
-# Клавиатуры модуля "Media Downloader"
-
 from telebot import types
 
 
-def media_downloader_menu_keyboard():
-    """Меню модуля загрузки медиа"""
+def media_menu_keyboard():
+    """Главное меню модуля"""
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
-        types.InlineKeyboardButton("🎬 Видео", callback_data="media_video"),
-        types.InlineKeyboardButton("🎵 Аудио", callback_data="media_audio"),
-        types.InlineKeyboardButton("📋 Мои загрузки", callback_data="media_my_downloads"),
+        types.InlineKeyboardButton("🎬 Скачать видео", callback_data="media_video"),
+        types.InlineKeyboardButton("🎵 Скачать аудио", callback_data="media_audio"),
+        types.InlineKeyboardButton("📋 Мои загрузки", callback_data="media_history"),
         types.InlineKeyboardButton("🔙 Назад", callback_data="media_back_to_modules")
     )
     return kb
 
 
 def quality_keyboard(media_type: str):
-    """
-    Клавиатура выбора качества
-
-    :param media_type: "video" или "audio"
-    """
+    """Клавиатура выбора качества"""
     kb = types.InlineKeyboardMarkup(row_width=2)
 
     if media_type == "video":
         kb.add(
-            types.InlineKeyboardButton("360p", callback_data="media_quality_360"),
-            types.InlineKeyboardButton("480p", callback_data="media_quality_480"),
-            types.InlineKeyboardButton("720p", callback_data="media_quality_720"),
-            types.InlineKeyboardButton("1080p", callback_data="media_quality_1080")
+            types.InlineKeyboardButton("360p", callback_data="media_quality_360p"),
+            types.InlineKeyboardButton("480p", callback_data="media_quality_480p"),
+            types.InlineKeyboardButton("720p", callback_data="media_quality_720p"),
+            types.InlineKeyboardButton("1080p", callback_data="media_quality_1080p")
         )
     else:  # audio
         kb.add(
@@ -44,11 +37,20 @@ def quality_keyboard(media_type: str):
     return kb
 
 
-def my_downloads_keyboard():
-    """Клавиатура для меню 'Мои загрузки'"""
+def result_keyboard():
+    """Клавиатура после успешной загрузки"""
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("🔄 Скачать ещё", callback_data="media_again"),
+        types.InlineKeyboardButton("🔙 В меню", callback_data="media_back_to_menu")
+    )
+    return kb
+
+
+def cancel_keyboard():
+    """Клавиатура отмены"""
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
-        types.InlineKeyboardButton("📥 Новая загрузка", callback_data="media_video"),
-        types.InlineKeyboardButton("🔙 Назад", callback_data="media_back_to_menu")
+        types.InlineKeyboardButton("🔙 Отмена", callback_data="media_back_to_menu")
     )
     return kb
