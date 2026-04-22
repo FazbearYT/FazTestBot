@@ -185,7 +185,12 @@ class CipherModule(BaseModule):
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text="💀 <b>Leet спик</b>\n\nВыберите уровень сложности замены символов:",
+                    text=(
+                        "💀 <b>Leet спик</b>\n\n"
+                        "Замена букв на похожие символы и цифры.\n"
+                        "⚠️ <b>Шифруется только английский язык!</b>\n\n"
+                        "Выберите уровень сложности замены символов:"
+                    ),
                     reply_markup=leet_difficulty_keyboard(),
                     parse_mode="HTML"
                 )
@@ -205,6 +210,30 @@ class CipherModule(BaseModule):
                     parse_mode="HTML"
                 )
                 bot.register_next_step_handler(call.message, self._process_text_input, bot)
+                return
+
+            # Вывод информации LEET
+            if call.data == "cipher_leetinfo":
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=(
+                        "💀 <b>О шифре Leet Speak (1337)</b>\n\n"
+                        "Leet — альтернативный алфавит, где буквы заменяются похожими символами и цифрами.\n\n"
+                        "🔤 <b>Важно:</b>\n"
+                        "• Шифруется только <b>английский язык</b>\n"
+                        "• Кириллица остаётся без изменений\n"
+                        "• Цифры и спецсимволы не меняются\n\n"
+                        "🎚️ <b>Уровни сложности:</b>\n"
+                        "• <b>Light</b> — базовые замены (A→4, E→3, O→0)\n"
+                        "• <b>Medium</b> — 2 варианта на букву (A→4 или @)\n"
+                        "• <b>Hardcore</b> — до 4 вариантов (A→4, @, /-\\, ^)\n\n"
+                        "<i>Пример: HELLO → H3LL0 или #3LL0</i>\n\n"
+                        "Выберите уровень сложности:"
+                    ),
+                    reply_markup=leet_difficulty_keyboard(),
+                    parse_mode="HTML"
+                )
                 return
 
             # Выбор шифра: Цезарь
@@ -289,8 +318,35 @@ class CipherModule(BaseModule):
                 bot.register_next_step_handler_by_chat_id(chat_id, self._process_text_input, bot)
                 return
 
+            #Изменить сложность LEET
+            if call.data == "cipher_leets_change_settings":
+                cipher = self.get_user_state(chat_id, 'cipher')
+                if cipher != 'leet':
+                    bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text="⚠️ Сессия устарела. Вернитесь в меню шифров.",
+                        reply_markup=self.get_menu_keyboard(),
+                        parse_mode="HTML"
+                    )
+                    return
+
+                self.set_user_state(chat_id, 'leet_diff', None)
+
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=(
+                        "💀 <b>Leet спик</b>\n\n"
+                        "Выберите уровень сложности замены символов:"
+                    ),
+                    reply_markup=leet_difficulty_keyboard(),
+                    parse_mode="HTML"
+                )
+                return
+
             # Изменить настройки Цезаря
-            if call.data == "cipher_change_settings":
+            if call.data == "cipher_caesar_change_settings":
                 cipher = self.get_user_state(chat_id, 'cipher')
                 if cipher != 'caesar':
                     bot.edit_message_text(

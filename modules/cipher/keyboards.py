@@ -23,7 +23,7 @@ def leet_difficulty_keyboard():
         types.InlineKeyboardButton("🟢 Light", callback_data="cipher_leet_light"),
         types.InlineKeyboardButton("🟡 Medium", callback_data="cipher_leet_medium"),
         types.InlineKeyboardButton("🔴 Hardcore", callback_data="cipher_leet_hardcore"),
-        #types.InlineKeyboardButton("ℹ️ О шифре Leet", callback_data="cipher_leetinfo")
+        types.InlineKeyboardButton("ℹ️ О шифре Leet", callback_data="cipher_leetinfo"),
         types.InlineKeyboardButton("🔙 Отмена", callback_data="cipher_back_to_menu")
     )
     return kb
@@ -46,7 +46,13 @@ def result_menu_keyboard(cipher_type):
     if cipher_type == "caesar":
         kb.add(
             types.InlineKeyboardButton("🔄 Другой текст", callback_data="cipher_again"),
-            types.InlineKeyboardButton("⚙️ Изменить настройки", callback_data="cipher_change_settings"),
+            types.InlineKeyboardButton("⚙️ Изменить настройки", callback_data="cipher_caesar_change_settings"),
+            types.InlineKeyboardButton("🔙 К шифрам", callback_data="cipher_back_to_menu")
+        )
+    elif cipher_type == "leet":
+        kb.add(
+            types.InlineKeyboardButton("🔄 Другой текст", callback_data="cipher_again"),
+            types.InlineKeyboardButton("⚙️ Изменить настройки", callback_data="cipher_leets_change_settings"),
             types.InlineKeyboardButton("🔙 К шифрам", callback_data="cipher_back_to_menu")
         )
     else:
