@@ -20,9 +20,10 @@ def cipher_menu_keyboard():
 def leet_difficulty_keyboard():
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
-        types.InlineKeyboardButton("🟢 Light", callback_data="leet_diff_light"),
-        types.InlineKeyboardButton("🟡 Medium", callback_data="leet_diff_medium"),
-        types.InlineKeyboardButton("🔴 Hardcore", callback_data="leet_diff_hardcore"),
+        types.InlineKeyboardButton("🟢 Light", callback_data="cipher_leet_light"),
+        types.InlineKeyboardButton("🟡 Medium", callback_data="cipher_leet_medium"),
+        types.InlineKeyboardButton("🔴 Hardcore", callback_data="cipher_leet_hardcore"),
+        #types.InlineKeyboardButton("ℹ️ О шифре Leet", callback_data="cipher_leetinfo")
         types.InlineKeyboardButton("🔙 Отмена", callback_data="cipher_back_to_menu")
     )
     return kb

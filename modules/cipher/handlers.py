@@ -192,8 +192,8 @@ class CipherModule(BaseModule):
                 return
 
             #Выбор сложности LEET
-            if call.data.startswith("leet_diff_"):
-                diff = call.data.replace("leet_diff_", "")
+            if call.data.startswith("cipher_leet_"):
+                diff = call.data.replace("cipher_leet_", "")
                 self.set_user_state(chat_id, 'leet_diff', diff)
                 diff_names = {'light':'🟢 Light', 'medium': '🟡 Medium', 'hardcore': '🔴 Hardcore'}
 
