@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import uuid
-import requests
 from telebot import types
 from typing import Any
 from core.module_base import BaseModule
@@ -11,7 +10,7 @@ from .keyboards import (
     quality_keyboard,
     result_keyboard,
     cancel_keyboard,
-    large_file_keyboard  # ✅ Исправлено: без параметров
+    large_file_keyboard
 )
 from .downloader import downloader
 from .config import (
@@ -119,9 +118,6 @@ class MediaDownloaderModule(BaseModule):
             if call.data == "media_upload_tmpfiles":
                 self._handle_upload(bot, chat_id, message_id, "tmpfiles")
                 return
-            if call.data == "media_upload_gofile":
-                self._handle_upload(bot, chat_id, message_id, "gofile")
-                return
 
         except Exception as e:
             bot.answer_callback_query(call.id, f"Ошибка: {str(e)[:60]}", show_alert=True)
@@ -163,7 +159,7 @@ class MediaDownloaderModule(BaseModule):
             return
 
         # 2. Скачивание
-        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"⏳ Загрузка...\n📌 {info['title'][:150]}...",
+        bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"⏳ Загрузка...\n📌 {info['title'][:100]}...",
                               parse_mode="HTML")
 
         success, filepath = downloader.download_video(url,
@@ -196,11 +192,11 @@ class MediaDownloaderModule(BaseModule):
             text=(
                 f"📥 <b>Media Downloader</b>\n\n"
                 f"⚠️ <b>Файл слишком большой для отправки!</b>\n\n"
-                f"📌 {info['title'][:50]}...\n"
+                f"📌 {info['title'][:100]}...\n"
                 f"📊 Размер: <b>{size_mb:.1f}MB</b> (Лимит: {MAX_FILE_SIZE_MB}MB)\n\n"
                 f"Выберите действие:"
             ),
-            reply_markup=large_file_keyboard(),  # ✅ Исправлено: вызов без параметров
+            reply_markup=large_file_keyboard(),
             parse_mode="HTML"
         )
 
@@ -238,15 +234,13 @@ class MediaDownloaderModule(BaseModule):
         # Аплоад
         if service == "tmpfiles":
             ok, link = self._upload_tmpfiles(filepath)
-        else:
-            ok, link = self._upload_gofile(filepath)
 
         downloader.cleanup_file(filepath)
 
         if ok:
-            bot.edit_message_text(
-                chat_id=chat_id, message_id=message_id,
-                text=f"✅ <b>Файл загружен!</b>\n\n🔗 <a href='{link}'>Скачать</a>\n\n<i>Хранится временно. Не делитесь ссылкой публично.</i>",
+            bot.send_message(
+                chat_id,
+                f"✅ <b>Файл загружен!</b>\n\n🔗 <a href='{link}'>Скачать</a>\n\n<i>Хранится временно. Не делитесь ссылкой публично.</i>",
                 reply_markup=result_keyboard(),
                 parse_mode="HTML"
             )
@@ -257,56 +251,120 @@ class MediaDownloaderModule(BaseModule):
                                   reply_markup=media_menu_keyboard(), parse_mode="HTML")
 
     def _send_to_telegram(self, bot, chat_id, message_id, filepath, media_type, info, quality):
-        """Отправка файла в Telegram + логирование + очистка"""
+        """Отправка файла в Telegram + новое сообщение с меню + логирование + очистка"""
         try:
+            # 1. Отправляем файл (видео или аудио)
             if media_type == "video":
                 with open(filepath, 'rb') as f:
-                    bot.send_video(chat_id, f, caption=f"🎬 {info['title']}", parse_mode="HTML")
-            else:
+                    bot.send_video(
+                        chat_id,
+                        f,
+                        caption=f"🎬 {info['title'][:200]}",
+                        parse_mode="HTML"
+                    )
+            else:  # audio
                 with open(filepath, 'rb') as f:
-                    bot.send_audio(chat_id, f, caption=f"🎵 {info['title']}", parse_mode="HTML")
+                    bot.send_audio(
+                        chat_id,
+                        f,
+                        caption=f"🎵 {info['title'][:200]}",
+                        parse_mode="HTML"
+                    )
 
+            # 2. Логируем загрузку
             fsize = os.path.getsize(filepath)
-            db.log_media_download(chat_id, info['url'], media_type, info['platform'], info['title'], filepath, fsize,
-                                  quality)
+            db.log_media_download(
+                chat_id,
+                info['url'],
+                media_type,
+                info['platform'],
+                info['title'],
+                str(filepath),  # ✅ ИСПРАВЛЕНО: преобразуем Path в строку
+                fsize,
+                quality
+            )
+
+            # 3. Очищаем временный файл
             downloader.cleanup_file(filepath)
 
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text="✅ Готово!",
-                                  reply_markup=result_keyboard(), parse_mode="HTML")
+            # 4. ⭐ ОТПРАВЛЯЕМ НОВОЕ сообщение с меню продолжения
+            continuation_text = (
+                f"✅ <b>Файл готов!</b>\n\n"
+                f"📁 {info['title'][:100]}{'...' if len(info['title']) > 100 else ''}\n"
+                f"🎚️ Качество: {quality}\n\n"
+                f"Что хотите сделать дальше?"
+            )
+
+            result_message = bot.send_message(
+                chat_id,
+                continuation_text,
+                reply_markup=result_keyboard(),
+                parse_mode="HTML"
+            )
+
+            # 5. ⭐ Сохраняем message_id НОВОГО сообщения для работы кнопок!
+            self.set_user_state(chat_id, 'message_id', result_message.message_id)
+
         except Exception as e:
             downloader.cleanup_file(filepath)
-            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"❌ Ошибка отправки: {str(e)}",
-                                  reply_markup=media_menu_keyboard(), parse_mode="HTML")
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"❌ Ошибка отправки: {str(e)[:200]}",
+                reply_markup=media_menu_keyboard(),
+                parse_mode="HTML"
+            )
 
     def _upload_tmpfiles(self, filepath: str) -> tuple:
+        """Загрузка на tmpfiles.org"""
         try:
-            with open(filepath, 'rb') as f:
-                r = requests.post('https://tmpfiles.org/api/v1/upload', files={'file': f}, timeout=300)
-            if r.status_code == 200 and r.json().get('status') == 'success':
-                return True, r.json()['data']['url'].replace('/dl/', '/download/')
-        except:
-            pass
-        return False, "Ошибка API"
+            print(f"📤 Загрузка на tmpfiles.org: {os.path.basename(filepath)}")
 
-    def _upload_gofile(self, filepath: str) -> tuple:
-        try:
-            srv = requests.get('https://api.gofile.io/getServer').json()
-            if srv['status'] == 'ok':
-                server = srv['data']['server']
-                with open(filepath, 'rb') as f:
-                    r = requests.post(f'https://{server}.gofile.io/uploadFile', files={'file': f}, timeout=300)
-                if r.status_code == 200 and r.json().get('status') == 'ok':
-                    return True, f"https://gofile.io/d/{r.json()['data']['code']}"
-        except:
-            pass
-        return False, "Ошибка API"
+            with open(filepath, 'rb') as f:
+                files = {'file': f}
+                response = requests.post(
+                    'https://tmpfiles.org/api/v1/upload',
+                    files=files,
+                    timeout=300
+                )
+
+            print(f"📥 Ответ tmpfiles: {response.status_code}")
+
+            if response.status_code == 200:
+                data = response.json()
+                print(f"✅ Данные ответа: {data}")
+
+                if data.get('status') == 'success':
+                    url = data['data']['url']
+                    download_url = url.replace('/dl/', '/download/')
+                    print(f"✅ Загружено на tmpfiles: {download_url}")
+                    return True, download_url
+                else:
+                    error_msg = data.get('data', {}).get('error', 'Неизвестная ошибка')
+                    print(f"❌ Ошибка tmpfiles: {error_msg}")
+                    return False, f"Ошибка сервиса: {error_msg}"
+            else:
+                print(f"❌ HTTP ошибка: {response.status_code} - {response.text[:200]}")
+                return False, f"HTTP {response.status_code}"
+
+        except requests.exceptions.Timeout:
+            print("❌ Превышено время ожидания tmpfiles")
+            return False, "Превышено время ожидания"
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Ошибка соединения с tmpfiles: {str(e)}")
+            return False, f"Ошибка сети: {str(e)[:100]}"
+        except Exception as e:
+            print(f"❌ Неожиданная ошибка tmpfiles: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False, f"Ошибка: {str(e)[:100]}"
 
     def _log_download(self, user_id, url, mtype, platform, title, fpath, fsize, quality):
         try:
             conn = sqlite3.connect(config.DATABASE_PATH)
             conn.execute(
                 f"INSERT INTO {TABLE_NAME} (user_id, url, media_type, platform, title, file_path, file_size, quality) VALUES (?,?,?,?,?,?,?,?)",
-                (user_id, url, mtype, platform, title, fpath, fsize, quality))
+                (user_id, url, mtype, platform, title, str(fpath), fsize, quality))  # ✅ Преобразуем в строку
             conn.commit()
             conn.close()
         except:

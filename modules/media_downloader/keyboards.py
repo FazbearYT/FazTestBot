@@ -40,7 +40,6 @@ def quality_keyboard(media_type: str):
 def large_file_keyboard():
     """
     Клавиатура для больших файлов (>50MB)
-    Исправлено: убран параметр video_info (не использовался)
     """
     kb = types.InlineKeyboardMarkup(row_width=1)
 
@@ -62,10 +61,10 @@ def large_file_keyboard():
             "☁️ Загрузить на tmpfiles.org (до 2GB)",
             callback_data="media_upload_tmpfiles"
         ),
-        types.InlineKeyboardButton(
-            "☁️ Загрузить на gofile.io (без лимита)",
-            callback_data="media_upload_gofile"
-        )
+        # types.InlineKeyboardButton(
+        #     "☁️ Загрузить на gofile.io (без лимита)",
+        #     callback_data="media_upload_gofile"
+        # )
     )
 
     # Отмена
