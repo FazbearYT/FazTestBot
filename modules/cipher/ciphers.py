@@ -1,7 +1,9 @@
 # modules/cipher/ciphers.py
 # Логика шифрования для модуля "Шифратор"
+import random
 
-from .config import SHIFR, ALPHABET_RU, ALPHABET_EN
+from temp.tests.test_ffmpeg import result
+from .config import SHIFR, ALPHABET_RU, ALPHABET_EN, LEET_MAP
 from config import ALLOWED_SYMBOLS
 
 
@@ -47,3 +49,18 @@ def validate_caesar_text(text, language):
                     return False, "❌ Текст содержит кириллические буквы, но выбран английский язык. Пожалуйста, введите текст латиницей."
                 return False, f"❌ Недопустимый символ: '{char}'"
         return True, ""
+
+def leet_cipher(text: str, difficulty: str) -> str:
+    leet_map = LEET_MAP.get(difficulty, LEET_MAP['light'])
+    result = []
+    for char in text:
+        upper_char = char.upper()
+        if upper_char in leet_map:
+            replacement = leet_map[upper_char]
+            if isinstance(replacement, list):
+                result.append(random.choice(replacement))
+            else:
+                result.append(replacement)
+        else:
+            result.append(char)
+    return ''.join(result)

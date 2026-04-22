@@ -10,12 +10,22 @@ def cipher_menu_keyboard():
     kb.add(
         types.InlineKeyboardButton("📡 Азбука Морзе", callback_data="cipher_morze"),
         types.InlineKeyboardButton("🔢 Числовой шифр", callback_data="cipher_numbers"),
+        types.InlineKeyboardButton("💀 Leet спик", callback_data="cipher_leet"),
         types.InlineKeyboardButton("📷 QR-код", callback_data="cipher_qr"),
         types.InlineKeyboardButton("🔄 Шифр Цезаря", callback_data="cipher_caesar"),
         types.InlineKeyboardButton("🔙 Назад", callback_data="cipher_back_to_modules")
     )
     return kb
 
+def leet_difficulty_keyboard():
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton("🟢 Light", callback_data="leet_diff_light"),
+        types.InlineKeyboardButton("🟡 Medium", callback_data="leet_diff_medium"),
+        types.InlineKeyboardButton("🔴 Hardcore", callback_data="leet_diff_hardcore"),
+        types.InlineKeyboardButton("🔙 Отмена", callback_data="cipher_back_to_menu")
+    )
+    return kb
 
 def caesar_language_keyboard():
     """Выбор языка для шифра Цезаря"""

@@ -13,9 +13,10 @@ from core.database import DatabaseManager
 from .keyboards import (
     cipher_menu_keyboard,
     caesar_language_keyboard,
-    result_menu_keyboard
+    result_menu_keyboard,
+    leet_difficulty_keyboard
 )
-from .ciphers import caesar_cipher, validate_caesar_text
+from .ciphers import caesar_cipher, validate_caesar_text, leet_cipher
 from .config import SHIFR
 
 # Глобальный экземпляр БД
@@ -53,6 +54,7 @@ class CipherModule(BaseModule):
         self.set_user_state(chat_id, 'cipher', None)
         self.set_user_state(chat_id, 'step', None)
         self.set_user_state(chat_id, 'language', None)
+        self.set_user_state(chat_id, 'leet_diff', None)
         self.set_user_state(chat_id, 'qr_message_id', None)
 
         bot.edit_message_text(
@@ -107,7 +109,6 @@ class CipherModule(BaseModule):
 
             # НАЗАД К МЕНЮ ШИФРОВ
             if call.data == "cipher_back_to_menu":
-                # УДАЛЯЕМ СООБЩЕНИЕ С QR-КОДОМ, ЕСЛИ ОНО ЕСТЬ
                 qr_message_id = self.get_user_state(chat_id, 'qr_message_id')
                 if qr_message_id:
                     try:
@@ -122,9 +123,10 @@ class CipherModule(BaseModule):
                     reply_markup=self.get_menu_keyboard(),
                     parse_mode="HTML"
                 )
-                # Сбрасываем параметры шифра Цезаря
+                # Сбрасываем параметры шифра Цезаря и LEET
                 self.set_user_state(chat_id, 'step', None)
                 self.set_user_state(chat_id, 'language', None)
+                self.set_user_state(chat_id, 'leet_diff', None)
                 return
 
             # Проверка состояния пользователя
@@ -171,6 +173,34 @@ class CipherModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text="📷 <b>QR-код</b>\n\nВведите текст для генерации QR-кода:",
+                    reply_markup=None,
+                    parse_mode="HTML"
+                )
+                bot.register_next_step_handler(call.message, self._process_text_input, bot)
+                return
+
+            # Выбор шифра: LEET
+            if call.data == "cipher_leet":
+                self.set_user_state(chat_id, 'cipher', 'leet')
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="💀 <b>Leet спик</b>\n\nВыберите уровень сложности замены символов:",
+                    reply_markup=leet_difficulty_keyboard(),
+                    parse_mode="HTML"
+                )
+                return
+
+            #Выбор сложности LEET
+            if call.data.startswith("leet_diff_"):
+                diff = call.data.replace("leet_diff_", "")
+                self.set_user_state(chat_id, 'leet_diff', diff)
+                diff_names = {'light':'🟢 Light', 'medium': '🟡 Medium', 'hardcore': '🔴 Hardcore'}
+
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"💀 <b>Leet спик</b>\nУровень: {diff_names.get(diff, diff)}\n\nВведите текст для преобразования:",
                     reply_markup=None,
                     parse_mode="HTML"
                 )
@@ -225,6 +255,7 @@ class CipherModule(BaseModule):
                     'morze': "🔤 <b>Азбука Морзе</b>\n\nВведите текст для шифрования:",
                     'numbers': "🔢 <b>Числовой шифр</b>\n\nВведите текст для шифрования:",
                     'qr': "📷 <b>QR-код</b>\n\nВведите текст для генерации QR-кода:",
+                    'leet': f"💀 <b>Leet спик</b>\nУровень: {self.get_user_state(chat_id, 'leet_diff', '??')}\n\nВведите текст для преобразования:",  # НОВОЕ
                     'caesar': f"🔤 <b>Шифр Цезаря</b>\nЯзык: {self.get_user_state(chat_id, 'language', '??')}\nШаг: {self.get_user_state(chat_id, 'step', '??')}\n\nВведите текст для шифрования:"
                 }
 
@@ -431,6 +462,42 @@ class CipherModule(BaseModule):
                         f"🔢 <b>Результат (числа):</b>\n<code>{result.strip()}</code>"
                     ),
                     reply_markup=result_menu_keyboard('numbers'),
+                    parse_mode="HTML"
+                )
+
+            # Шифр LEET
+            elif cipher == "leet":
+                diff = self.get_user_state(chat_id, 'leet_diff')
+                if not diff:
+                    bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text="⚠️ Сложность не выбрана. Вернитесь в меню шифров.",
+                        reply_markup=self.get_menu_keyboard(),
+                        parse_mode="HTML"
+                    )
+                    return
+                result = leet_cipher(text, diff)
+                diff_names = {'light': '🟢 Light', 'medium': '🟡 Medium', 'hardcore': '🔴 Hardcore'}
+
+                #ЛОГИРУЕМ ОПЕРАЦИЮ
+                db.log_cipher_operation(
+                    user_id=chat_id,
+                    cipher_type= f"leet_{diff}",
+                    original_text=text,
+                    encrypted_text=result,
+                    session_id = session_id
+                )
+
+                #Отправляем результат
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=(
+                        f"💀 <b>Исходный текст:</b>\n<code>{text}</code>\n\n"
+                        f"💀 <b>Результат (Leet {diff_names.get(diff, diff)}):</b>\n<code>{result}</code>"
+                    ),
+                    reply_markup=result_menu_keyboard('leet'),
                     parse_mode="HTML"
                 )
 
