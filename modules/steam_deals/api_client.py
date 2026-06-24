@@ -19,7 +19,8 @@ from .config import (
     STEAM_SEARCH_URL,
     STEAM_APPDETAILS_URL,
     STEAM_COUNTRY_CODE,
-    STEAM_LANGUAGE
+    STEAM_LANGUAGE,
+    PRICE_ALERT_THRESHOLD
 )
 
 
@@ -325,7 +326,7 @@ class SteamDealsClient:
             return False
 
         difference = ((current_price - historical_low) / historical_low) * 100
-        return difference > 20
+        return difference > PRICE_ALERT_THRESHOLD
 
 
 # Глобальный экземпляр клиента
