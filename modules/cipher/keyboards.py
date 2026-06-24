@@ -23,10 +23,23 @@ def leet_difficulty_keyboard():
         types.InlineKeyboardButton("🟢 Light", callback_data="cipher_leet_light"),
         types.InlineKeyboardButton("🟡 Medium", callback_data="cipher_leet_medium"),
         types.InlineKeyboardButton("🔴 Hardcore", callback_data="cipher_leet_hardcore"),
+        types.InlineKeyboardButton("⚙️ Детальная настройка", callback_data="cipher_leetadv"),
         types.InlineKeyboardButton("ℹ️ О шифре Leet", callback_data="cipher_leetinfo"),
         types.InlineKeyboardButton("🔙 Отмена", callback_data="cipher_back_to_menu")
     )
     return kb
+
+def leet_advanced_keyboard():
+    """Детальная настройка: выбор словаря, вероятность задаётся вручную"""
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton("🟢 Словарь Light", callback_data="cipher_ladv_light"),
+        types.InlineKeyboardButton("🟡 Словарь Medium", callback_data="cipher_ladv_medium"),
+        types.InlineKeyboardButton("🔴 Словарь Hardcore", callback_data="cipher_ladv_hardcore"),
+        types.InlineKeyboardButton("🔙 Назад", callback_data="cipher_leet")
+    )
+    return kb
+
 
 def caesar_language_keyboard():
     """Выбор языка для шифра Цезаря"""

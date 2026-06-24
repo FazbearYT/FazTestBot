@@ -6,6 +6,7 @@ import qrcode
 import os
 import uuid
 import hashlib
+import html
 from telebot import types
 from typing import Any
 from core.module_base import BaseModule
@@ -14,10 +15,11 @@ from .keyboards import (
     cipher_menu_keyboard,
     caesar_language_keyboard,
     result_menu_keyboard,
-    leet_difficulty_keyboard
+    leet_difficulty_keyboard,
+    leet_advanced_keyboard
 )
 from .ciphers import caesar_cipher, validate_caesar_text, leet_cipher
-from .config import SHIFR
+from .config import SHIFR, LEET_DIFF_NAMES, LEET_REPLACE_CHANCE
 
 # Глобальный экземпляр БД
 db = DatabaseManager()
@@ -55,6 +57,7 @@ class CipherModule(BaseModule):
         self.set_user_state(chat_id, 'step', None)
         self.set_user_state(chat_id, 'language', None)
         self.set_user_state(chat_id, 'leet_diff', None)
+        self.set_user_state(chat_id, 'leet_chance', None)
         self.set_user_state(chat_id, 'qr_message_id', None)
 
         bot.edit_message_text(
@@ -127,6 +130,7 @@ class CipherModule(BaseModule):
                 self.set_user_state(chat_id, 'step', None)
                 self.set_user_state(chat_id, 'language', None)
                 self.set_user_state(chat_id, 'leet_diff', None)
+                self.set_user_state(chat_id, 'leet_chance', None)
                 return
 
             # Проверка состояния пользователя
@@ -196,20 +200,56 @@ class CipherModule(BaseModule):
                 )
                 return
 
-            #Выбор сложности LEET
+            #Выбор пресета LEET (словарь + своя вероятность по умолчанию)
             if call.data.startswith("cipher_leet_"):
                 diff = call.data.replace("cipher_leet_", "")
                 self.set_user_state(chat_id, 'leet_diff', diff)
-                diff_names = {'light':'🟢 Light', 'medium': '🟡 Medium', 'hardcore': '🔴 Hardcore'}
+                self.set_user_state(chat_id, 'leet_chance', None)  # None -> вероятность пресета
 
+                preset_pct = int(round(LEET_REPLACE_CHANCE.get(diff, 1.0) * 100))
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"💀 <b>Leet спик</b>\nУровень: {diff_names.get(diff, diff)}\n\nВведите текст для преобразования:",
+                    text=(
+                        f"💀 <b>Leet спик</b>\nУровень: {LEET_DIFF_NAMES.get(diff, diff)} "
+                        f"(замена ~{preset_pct}%)\n\nВведите текст для преобразования:"
+                    ),
                     reply_markup=None,
                     parse_mode="HTML"
                 )
                 bot.register_next_step_handler(call.message, self._process_text_input, bot)
+                return
+
+            # Детальная настройка: выбор словаря
+            if call.data == "cipher_leetadv":
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=(
+                        "⚙️ <b>Детальная настройка Leet</b>\n\n"
+                        "Выберите словарь замен — вероятность зададите сами на следующем шаге:"
+                    ),
+                    reply_markup=leet_advanced_keyboard(),
+                    parse_mode="HTML"
+                )
+                return
+
+            # Детальная настройка: словарь выбран -> запрос своей вероятности
+            if call.data.startswith("cipher_ladv_"):
+                diff = call.data.replace("cipher_ladv_", "")
+                self.set_user_state(chat_id, 'leet_diff', diff)
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=(
+                        f"⚙️ <b>Детальная настройка</b>\nСловарь: {LEET_DIFF_NAMES.get(diff, diff)}\n\n"
+                        "Введите вероятность замены буквы в процентах (от 1 до 100):\n\n"
+                        "<i>Например: 40</i>"
+                    ),
+                    reply_markup=None,
+                    parse_mode="HTML"
+                )
+                bot.register_next_step_handler(call.message, self._leet_chance_input, bot)
                 return
 
             # Вывод информации LEET
@@ -224,11 +264,14 @@ class CipherModule(BaseModule):
                         "• Шифруется только <b>английский язык</b>\n"
                         "• Кириллица остаётся без изменений\n"
                         "• Цифры и спецсимволы не меняются\n\n"
-                        "🎚️ <b>Уровни сложности:</b>\n"
-                        "• <b>Light</b> — базовые замены (A→4, E→3, O→0)\n"
-                        "• <b>Medium</b> — 2 варианта на букву (A→4 или @)\n"
-                        "• <b>Hardcore</b> — до 4 вариантов (A→4, @, /-\\, ^)\n\n"
-                        "<i>Пример: HELLO → H3LL0 или #3LL0</i>\n\n"
+                        "🎚️ <b>Пресеты</b> (словарь + плотность замен):\n"
+                        "• 🟢 <b>Light</b> — базовые замены, ~40% букв\n"
+                        "• 🟡 <b>Medium</b> — 2 варианта на букву, ~65%\n"
+                        "• 🔴 <b>Hardcore</b> — до 6 вариантов, ASCII-арт, ~90%\n\n"
+                        "⚙️ <b>Детальная настройка</b> — выбрать словарь и задать "
+                        "свою вероятность замены вручную.\n\n"
+                        "<i>Часть букв остаётся как есть, поэтому результат каждый раз разный.\n"
+                        "Пример: HELLO → #3|_|_0 или H3Llo</i>\n\n"
                         "Выберите уровень сложности:"
                     ),
                     reply_markup=leet_difficulty_keyboard(),
@@ -280,11 +323,19 @@ class CipherModule(BaseModule):
             # Повторный ввод
             if call.data == "cipher_again":
                 cipher = self.get_user_state(chat_id, 'cipher')
+
+                leet_diff = self.get_user_state(chat_id, 'leet_diff')
+                leet_chance = self.get_user_state(chat_id, 'leet_chance')
+                leet_label = LEET_DIFF_NAMES.get(leet_diff, '??')
+                if leet_diff in LEET_REPLACE_CHANCE:
+                    eff = leet_chance if leet_chance is not None else LEET_REPLACE_CHANCE[leet_diff]
+                    leet_label = f"{leet_label} · {int(round(eff * 100))}%"
+
                 titles = {
                     'morze': "🔤 <b>Азбука Морзе</b>\n\nВведите текст для шифрования:",
                     'numbers': "🔢 <b>Числовой шифр</b>\n\nВведите текст для шифрования:",
                     'qr': "📷 <b>QR-код</b>\n\nВведите текст для генерации QR-кода:",
-                    'leet': f"💀 <b>Leet спик</b>\nУровень: {self.get_user_state(chat_id, 'leet_diff', '??')}\n\nВведите текст для преобразования:",  # НОВОЕ
+                    'leet': f"💀 <b>Leet спик</b>\nУровень: {leet_label}\n\nВведите текст для преобразования:",
                     'caesar': f"🔤 <b>Шифр Цезаря</b>\nЯзык: {self.get_user_state(chat_id, 'language', '??')}\nШаг: {self.get_user_state(chat_id, 'step', '??')}\n\nВведите текст для шифрования:"
                 }
 
@@ -332,6 +383,7 @@ class CipherModule(BaseModule):
                     return
 
                 self.set_user_state(chat_id, 'leet_diff', None)
+                self.set_user_state(chat_id, 'leet_chance', None)
 
                 bot.edit_message_text(
                     chat_id=chat_id,
@@ -438,6 +490,63 @@ class CipherModule(BaseModule):
                     reply_markup=self.get_menu_keyboard()
                 )
 
+    def _leet_chance_input(self, message, bot):
+        """Обработка ввода своей вероятности замены (детальная настройка)"""
+        chat_id = message.chat.id
+
+        # Удаляем сообщение пользователя
+        try:
+            bot.delete_message(chat_id, message.message_id)
+        except Exception:
+            pass
+
+        bot_message_id = self.get_user_state(chat_id, 'message_id')
+
+        try:
+            percent = int(message.text.strip())
+        except (ValueError, AttributeError):
+            percent = None
+
+        if percent is None or not (1 <= percent <= 100):
+            if bot_message_id:
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=bot_message_id,
+                    text="❌ Введите целое число от 1 до 100 (процент замены):",
+                    parse_mode="HTML"
+                )
+                bot.register_next_step_handler_by_chat_id(chat_id, self._leet_chance_input, bot)
+            else:
+                bot.send_message(
+                    chat_id,
+                    "⚠️ Сессия устарела. Вернитесь в меню шифров.",
+                    reply_markup=self.get_menu_keyboard()
+                )
+            return
+
+        # leet_diff (выбранный словарь) уже установлен — сохраняем только вероятность
+        self.set_user_state(chat_id, 'leet_chance', percent / 100)
+        diff = self.get_user_state(chat_id, 'leet_diff')
+
+        if bot_message_id:
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=bot_message_id,
+                text=(
+                    f"⚙️ <b>Детальная настройка</b>\nСловарь: {LEET_DIFF_NAMES.get(diff, diff)} · "
+                    f"замена {percent}%\n\nВведите текст для преобразования:"
+                ),
+                reply_markup=None,
+                parse_mode="HTML"
+            )
+            bot.register_next_step_handler_by_chat_id(chat_id, self._process_text_input, bot)
+        else:
+            bot.send_message(
+                chat_id,
+                "⚠️ Сессия устарела. Вернитесь в меню шифров.",
+                reply_markup=self.get_menu_keyboard()
+            )
+
     def _process_text_input(self, message, bot):
         """Обработка ввода текста для шифрования"""
         chat_id = message.chat.id
@@ -533,8 +642,11 @@ class CipherModule(BaseModule):
                         parse_mode="HTML"
                     )
                     return
-                result = leet_cipher(text, diff)
-                diff_names = {'light': '🟢 Light', 'medium': '🟡 Medium', 'hardcore': '🔴 Hardcore'}
+                chance = self.get_user_state(chat_id, 'leet_chance')
+                result = leet_cipher(text, diff, chance)
+
+                eff_chance = chance if chance is not None else LEET_REPLACE_CHANCE.get(diff, 1.0)
+                level = f"{LEET_DIFF_NAMES.get(diff, diff)} · {int(round(eff_chance * 100))}%"
 
                 #ЛОГИРУЕМ ОПЕРАЦИЮ
                 db.log_cipher_operation(
@@ -545,13 +657,19 @@ class CipherModule(BaseModule):
                     session_id = session_id
                 )
 
+                # Экранируем: leet-замены содержат < > & — иначе HTML-разметка сломается
+                safe_text = html.escape(text)
+                safe_result = html.escape(result)
+
                 #Отправляем результат
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text=(
-                        f"💀 <b>Исходный текст:</b>\n<code>{text}</code>\n\n"
-                        f"💀 <b>Результат (Leet {diff_names.get(diff, diff)}):</b>\n<code>{result}</code>"
+                        f"💀 <b>L33T SP34K</b> · {level}\n"
+                        f"━━━━━━━━━━━━━\n"
+                        f"📥 <b>Было:</b>\n<code>{safe_text}</code>\n\n"
+                        f"📤 <b>Стало:</b>\n<code>{safe_result}</code>"
                     ),
                     reply_markup=result_menu_keyboard('leet'),
                     parse_mode="HTML"
