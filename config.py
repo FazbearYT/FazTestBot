@@ -6,7 +6,7 @@
 from core.paths import DATABASE_PATH, DOWNLOADS_DIR, BACKUPS_DIR, TEMP_DIR, EXPORTS_DIR
 
 # ====== ВЕРСИЯ БОТА (ЕДИНЫЙ ИСТОЧНИК) ======
-VERSION = "4.4.2"
+VERSION = "4.5.0"
 LAST_UPDATE_DATE = "25.06.2026"
 AUTHOR = "@Fazbear_r"
 
