@@ -2,9 +2,11 @@
 # Обработчики модуля "Steam Deals Tracker"
 
 import asyncio
+import html
 import sqlite3
 from datetime import datetime, timedelta
 from telebot import types
+from telebot.apihelper import ApiTelegramException
 from typing import Any
 from core.module_base import BaseModule
 from core.database import DatabaseManager
@@ -22,7 +24,8 @@ from .config import (
     WISHLIST_TABLE,
     CACHE_TABLE,
     CURRENCY_SYMBOL,
-    PRICE_ALERT_THRESHOLD
+    PRICE_ALERT_THRESHOLD,
+    STEAM_APP_URL
 )
 import config
 
@@ -57,6 +60,7 @@ class SteamDealsModule(BaseModule):
                     user_id INTEGER NOT NULL,
                     game_id TEXT NOT NULL,
                     game_name TEXT NOT NULL,
+                    steam_app_id TEXT,
                     current_price REAL,
                     historical_low REAL,
                     discount_percent REAL,
@@ -65,6 +69,17 @@ class SteamDealsModule(BaseModule):
                     UNIQUE(user_id, game_id)
                 )
             """)
+
+            existing_columns = [row[1] for row in cursor.execute(
+                f"PRAGMA table_info({WISHLIST_TABLE})"
+            ).fetchall()]
+            if "steam_app_id" not in existing_columns:
+                cursor.execute(f"ALTER TABLE {WISHLIST_TABLE} ADD COLUMN steam_app_id TEXT")
+                # Старые цены хранились в другой валюте (USD), сбрасываем под пересчёт в тенге
+                cursor.execute(f"""
+                    UPDATE {WISHLIST_TABLE}
+                    SET current_price = NULL, historical_low = NULL, discount_percent = NULL
+                """)
 
             # Таблица кэша
             cursor.execute(f"""
@@ -221,13 +236,66 @@ class SteamDealsModule(BaseModule):
         """Клавиатура меню"""
         return steam_main_menu_keyboard()
 
+    def _run_async(self, coro):
+        """Запуск асинхронной корутины из синхронного обработчика"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    def _safe_edit(self, bot: Any, **kwargs) -> None:
+        """
+        Редактирование сообщения с игнорированием "message is not modified".
+
+        Telegram отвечает ошибкой 400, если новый текст и клавиатура
+        полностью совпадают с текущими. Для кнопки "Обновить" это нормально.
+        """
+        try:
+            bot.edit_message_text(**kwargs)
+        except ApiTelegramException as e:
+            if "message is not modified" in str(e):
+                return
+            raise
+
+    def _fetch_price_for_add(self, game: dict):
+        """
+        Цена игры в Steam (тенге) для добавления в вишлист.
+
+        Исторический минимум стартует с текущей цены и далее снижается
+        при обновлениях.
+
+        :param game: Результат поиска CheapShark (содержит steamAppID)
+        :return: (current_price_kzt, historical_low_kzt, discount_percent, steam_app_id)
+        """
+        self._run_async(steam_client.ensure_rate())
+
+        steam_app_id = game.get('steamAppID')
+        if not steam_app_id:
+            return 0.0, 0.0, 0.0, None
+
+        price = self._run_async(steam_client.get_appdetails_price(steam_app_id))
+
+        if price and price.get('available'):
+            current = price['price_kzt']
+            return current, current, price['discount_percent'], steam_app_id
+
+        return 0.0, 0.0, 0.0, steam_app_id
+
     def _show_wishlist(self, bot: Any, chat_id: int, message_id: int, force_refresh: bool = False):
         """Показ вишлиста пользователя"""
         try:
+            self._run_async(steam_client.ensure_rate())
+
+            if force_refresh:
+                self._refresh_wishlist_prices(chat_id)
+
             wishlist = self._get_user_wishlist(chat_id)
 
             if not wishlist:
-                bot.edit_message_text(
+                self._safe_edit(
+                    bot,
                     chat_id=chat_id,
                     message_id=message_id,
                     text="📜 <b>Мой вишлист</b>\n\n"
@@ -243,22 +311,32 @@ class SteamDealsModule(BaseModule):
             text += f"Всего игр: {len(wishlist)}\n\n"
 
             for i, game in enumerate(wishlist[:MAX_WISHLIST_GAMES], 1):
-                name = game['game_name'][:40]
-                price = steam_client.format_price(game['current_price']) if game['current_price'] else "N/A"
+                name = html.escape(game['game_name'][:40])
                 discount = steam_client.format_discount(game['discount_percent']) if game['discount_percent'] else "0%"
 
-                # Проверка на исторический минимум
+                if game['current_price']:
+                    price = f"{steam_client.format_price_kzt(game['current_price'])} ({steam_client.format_price_rub(game['current_price'])})"
+                else:
+                    price = "N/A"
+
+                low = steam_client.format_price_kzt(game['historical_low']) if game['historical_low'] else "N/A"
+
                 alert = ""
                 if game['current_price'] and game['historical_low']:
                     if steam_client.check_price_alert(game['current_price'], game['historical_low']):
                         alert = " ⚠️"
 
-                text += f"{i}. {name} | {price} ({discount}){alert}\n"
+                text += f"{i}. <b>{name}</b>\n"
+                text += f"   💰 {price} · скидка {discount} · 📉 мин: {low}{alert}\n"
 
             if len(wishlist) > MAX_WISHLIST_GAMES:
                 text += f"\n<i>... и ещё {len(wishlist) - MAX_WISHLIST_GAMES} игр</i>"
 
-            bot.edit_message_text(
+            if force_refresh:
+                text += f"\n<i>🕐 Обновлено: {datetime.now().strftime('%H:%M:%S')}</i>"
+
+            self._safe_edit(
+                bot,
                 chat_id=chat_id,
                 message_id=message_id,
                 text=text,
@@ -284,12 +362,13 @@ class SteamDealsModule(BaseModule):
             loop.close()
 
             if not games:
-                bot.edit_message_text(
+                self._safe_edit(
+                    bot,
                     chat_id=chat_id,
                     message_id=message_id,
                     text="🎁 <b>Бесплатно (100% OFF)</b>\n\n"
                          "⚠️ Сейчас нет бесплатных игр.\n\n"
-                         "Загляните позже!",
+                         f"<i>🕐 Проверено: {datetime.now().strftime('%H:%M:%S')}</i>",
                     reply_markup=free_games_keyboard(),
                     parse_mode="HTML"
                 )
@@ -300,16 +379,23 @@ class SteamDealsModule(BaseModule):
             text += f"Всего: {len(games)}\n\n"
 
             for i, game in enumerate(games[:20], 1):
-                # Используем external или title для названия
-                name = game.get('external', game.get('title', 'Unknown'))[:50]
-                text += f"{i}. {name}\n"
+                name = html.escape(game.get('name', 'Unknown')[:50])
+                app_id = game.get('app_id')
+                if app_id:
+                    text += f'{i}. <a href="{STEAM_APP_URL}{app_id}">{name}</a>\n'
+                else:
+                    text += f"{i}. {name}\n"
 
-            bot.edit_message_text(
+            text += f"\n<i>🕐 Проверено: {datetime.now().strftime('%H:%M:%S')}</i>"
+
+            self._safe_edit(
+                bot,
                 chat_id=chat_id,
                 message_id=message_id,
                 text=text,
                 reply_markup=free_games_keyboard(),
-                parse_mode="HTML"
+                parse_mode="HTML",
+                disable_web_page_preview=True
             )
 
         except Exception as e:
@@ -411,33 +497,23 @@ class SteamDealsModule(BaseModule):
         if len(results) == 1:
             game = results[0]
             game_id = game.get('gameID')
-            # Используем external вместо title
             game_name = game.get('external', game.get('title', 'Unknown'))
 
-            # Добавляем в вишлист
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            deals = loop.run_until_complete(steam_client.get_game_deals(game_id))
-            loop.close()
+            current_price, historical_low, discount_percent, steam_app_id = self._fetch_price_for_add(game)
 
-            current_price = 0
-            historical_low = 0
-            discount_percent = 0
+            if current_price:
+                price_line = f"{steam_client.format_price_kzt(current_price)} ({steam_client.format_price_rub(current_price)})"
+            else:
+                price_line = "N/A"
 
-            if deals:
-                deal = deals[0]
-                current_price = float(deal.get('salePrice', 0))
-                historical_low = float(deal.get('lowestPrice', 0))
-                discount_percent = float(deal.get('savings', 0)) * 100
-
-            if self._add_game_to_wishlist(chat_id, game_id, game_name, current_price, historical_low, discount_percent):
+            if self._add_game_to_wishlist(chat_id, game_id, game_name, steam_app_id, current_price, historical_low, discount_percent):
                 if message_id:
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
                         text=f"✅ <b>Игра добавлена</b>\n\n"
-                             f"🎮 {game_name}\n"
-                             f"💰 {steam_client.format_price(current_price)}\n"
+                             f"🎮 {html.escape(game_name)}\n"
+                             f"💰 {price_line}\n"
                              f"📉 Скидка: {steam_client.format_discount(discount_percent)}\n\n"
                              "Добавлена в вишлист!",
                         reply_markup=wishlist_keyboard(),
@@ -489,6 +565,8 @@ class SteamDealsModule(BaseModule):
         """Обработка выбора игры из списка"""
         chat_id = message.chat.id
 
+        results = self.get_user_state(chat_id, 'search_results') or []
+
         # Сбрасываем состояние
         self.set_user_state(chat_id, 'action', None)
         self.set_user_state(chat_id, 'search_results', None)
@@ -501,7 +579,6 @@ class SteamDealsModule(BaseModule):
 
         try:
             game_index = int(message.text.strip()) - 1
-            results = self.get_user_state(chat_id, 'search_results', [])
 
             if game_index < 0 or game_index >= len(results):
                 bot.send_message(
@@ -515,23 +592,9 @@ class SteamDealsModule(BaseModule):
             game_id = game.get('gameID')
             game_name = game.get('external', game.get('title', 'Unknown'))
 
-            # Получаем детали игры
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            deals = loop.run_until_complete(steam_client.get_game_deals(game_id))
-            loop.close()
+            current_price, historical_low, discount_percent, steam_app_id = self._fetch_price_for_add(game)
 
-            current_price = 0
-            historical_low = 0
-            discount_percent = 0
-
-            if deals:
-                deal = deals[0]
-                current_price = float(deal.get('salePrice', 0))
-                historical_low = float(deal.get('lowestPrice', 0))
-                discount_percent = float(deal.get('savings', 0)) * 100
-
-            if self._add_game_to_wishlist(chat_id, game_id, game_name, current_price, historical_low, discount_percent):
+            if self._add_game_to_wishlist(chat_id, game_id, game_name, steam_app_id, current_price, historical_low, discount_percent):
                 bot.send_message(
                     chat_id,
                     f"✅ Игра '{game_name}' добавлена в вишлист!",
@@ -560,13 +623,10 @@ class SteamDealsModule(BaseModule):
     def _add_game_by_id(self, bot: Any, chat_id: int, message_id: int, game_id: str):
         """Добавление игры по ID"""
         try:
-            # Получаем детали игры
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            game_info = loop.run_until_complete(steam_client.get_game_details(game_id))
-            loop.close()
+            self._run_async(steam_client.ensure_rate())
+            info = self._run_async(steam_client.get_steam_app_id(game_id))
 
-            if not game_info:
+            if not info or not info.get('steam_app_id'):
                 bot.answer_callback_query(
                     bot.current_call.id if hasattr(bot, 'current_call') else 0,
                     "❌ Не удалось получить информацию об игре",
@@ -574,25 +634,21 @@ class SteamDealsModule(BaseModule):
                 )
                 return
 
-            game_name = game_info.get('info', {}).get('title', 'Unknown')
+            game_name = info.get('title', 'Unknown')
+            steam_app_id = info['steam_app_id']
 
-            # Получаем сделки
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            deals = loop.run_until_complete(steam_client.get_game_deals(game_id))
-            loop.close()
+            price = self._run_async(steam_client.get_appdetails_price(steam_app_id))
 
-            current_price = 0
-            historical_low = 0
-            discount_percent = 0
+            if price and price.get('available'):
+                current_price = price['price_kzt']
+                historical_low = current_price
+                discount_percent = price['discount_percent']
+            else:
+                current_price = 0.0
+                historical_low = 0.0
+                discount_percent = 0.0
 
-            if deals:
-                deal = deals[0]
-                current_price = float(deal.get('salePrice', 0))
-                historical_low = float(deal.get('lowestPrice', 0))
-                discount_percent = float(deal.get('savings', 0)) * 100
-
-            if self._add_game_to_wishlist(chat_id, game_id, game_name, current_price, historical_low, discount_percent):
+            if self._add_game_to_wishlist(chat_id, game_id, game_name, steam_app_id, current_price, historical_low, discount_percent):
                 bot.answer_callback_query(
                     bot.current_call.id if hasattr(bot, 'current_call') else 0,
                     f"✅ {game_name} добавлена в вишлист!",
@@ -620,7 +676,7 @@ class SteamDealsModule(BaseModule):
             cursor = conn.cursor()
 
             cursor.execute(f"""
-                SELECT game_id, game_name, current_price, historical_low, discount_percent, added_at
+                SELECT game_id, game_name, current_price, historical_low, discount_percent, added_at, steam_app_id
                 FROM {WISHLIST_TABLE}
                 WHERE user_id = ?
                 ORDER BY added_at DESC
@@ -634,7 +690,8 @@ class SteamDealsModule(BaseModule):
                     'current_price': row[2],
                     'historical_low': row[3],
                     'discount_percent': row[4],
-                    'added_at': row[5]
+                    'added_at': row[5],
+                    'steam_app_id': row[6]
                 })
 
             conn.close()
@@ -643,8 +700,8 @@ class SteamDealsModule(BaseModule):
             return []
 
     def _add_game_to_wishlist(self, user_id: int, game_id: str, game_name: str,
-                              current_price: float = 0, historical_low: float = 0,
-                              discount_percent: float = 0) -> bool:
+                              steam_app_id: str = None, current_price: float = 0,
+                              historical_low: float = 0, discount_percent: float = 0) -> bool:
         """Добавление игры в вишлист"""
         try:
             conn = sqlite3.connect(config.DATABASE_PATH)
@@ -660,10 +717,10 @@ class SteamDealsModule(BaseModule):
 
             # Добавляем или обновляем
             cursor.execute(f"""
-                INSERT OR REPLACE INTO {WISHLIST_TABLE} 
-                (user_id, game_id, game_name, current_price, historical_low, discount_percent, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (user_id, game_id, game_name, current_price, historical_low, discount_percent))
+                INSERT OR REPLACE INTO {WISHLIST_TABLE}
+                (user_id, game_id, game_name, steam_app_id, current_price, historical_low, discount_percent, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (user_id, game_id, game_name, steam_app_id, current_price, historical_low, discount_percent))
 
             conn.commit()
             conn.close()
@@ -671,6 +728,57 @@ class SteamDealsModule(BaseModule):
         except Exception as e:
             print(f"⚠️ Ошибка добавления в вишлист: {str(e)}")
             return False
+
+    def _refresh_wishlist_prices(self, user_id: int) -> None:
+        """
+        Обновление цен вишлиста из Steam.
+
+        Для каждой игры берётся текущая цена Steam, исторический минимум
+        снижается, если текущая цена стала ниже ранее зафиксированной.
+        """
+        wishlist = self._get_user_wishlist(user_id)
+
+        for game in wishlist:
+            steam_app_id = game.get('steam_app_id')
+
+            if not steam_app_id:
+                resolved = self._run_async(steam_client.get_steam_app_id(game['game_id']))
+                steam_app_id = resolved.get('steam_app_id') if resolved else None
+                if not steam_app_id:
+                    continue
+
+            price = self._run_async(steam_client.get_appdetails_price(steam_app_id))
+
+            if not price or not price.get('available'):
+                continue
+
+            current = price['price_kzt']
+            if current <= 0:
+                continue
+
+            previous_low = game['historical_low'] or current
+            new_low = min(previous_low, current)
+
+            self._update_game_price(user_id, game['game_id'], steam_app_id, current, new_low, price['discount_percent'])
+
+    def _update_game_price(self, user_id: int, game_id: str, steam_app_id: str,
+                           current_price: float, historical_low: float, discount_percent: float) -> None:
+        """Обновление цены игры в вишлисте"""
+        try:
+            conn = sqlite3.connect(config.DATABASE_PATH)
+            cursor = conn.cursor()
+
+            cursor.execute(f"""
+                UPDATE {WISHLIST_TABLE}
+                SET steam_app_id = ?, current_price = ?, historical_low = ?, discount_percent = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ? AND game_id = ?
+            """, (steam_app_id, current_price, historical_low, discount_percent, user_id, game_id))
+
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"⚠️ Ошибка обновления цены: {str(e)}")
 
     def _remove_game_from_wishlist(self, user_id: int, game_index: int) -> bool:
         """Удаление игры из вишлиста по индексу"""
