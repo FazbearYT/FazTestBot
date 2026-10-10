@@ -270,7 +270,7 @@ class IPLookupModule(BaseModule):
                     text="⚠️ <b>Превышен лимит API</b>\n\n"
                          "Сервис ipapi.co имеет ограничение на количество запросов.\n\n"
                          "Подождите несколько минут и попробуйте снова.\n\n"
-                         "Или получите бесплатный API ключ на ipinfo.io и добавьте его в secrets.py",
+                         "Или получите бесплатный API ключ на ipinfo.io и добавьте его в .env",
                     reply_markup=ip_lookup_menu_keyboard(),
                     parse_mode="HTML"
                 )

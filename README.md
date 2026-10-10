@@ -8,8 +8,21 @@ Modular Telegram bot built with Python, pyTelegramBotAPI, and SQLite.
 pip install -r requirements.txt
 ```
 
-Copy `secrets.template.py` to the ignored `secrets.py`, configure the bot token, and
-start the application from the repository root with `python bot.py`.
+Copy `.env.example` to the ignored `.env`, configure `BOT_TOKEN`, and validate the
+environment before startup:
+
+```bash
+python -m scripts.doctor
+python bot.py
+```
+
+Process environment variables override values from `.env`. Secret values are never
+stored in tracked Python files or printed by the diagnostic command.
+
+For an existing installation, copy the values from the legacy ignored `secrets.py`
+to `.env`. After `python -m scripts.doctor` succeeds and the bot starts correctly,
+delete `secrets.py`; leaving it in the repository root shadows Python's standard
+library module with the same name.
 
 ## Development
 
