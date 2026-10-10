@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import importlib
 import socket
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -54,6 +56,21 @@ def run_tests(root: Path, module_name: str) -> bool:
     return result.wasSuccessful()
 
 
+def run_quality(root: Path, module_name: str) -> None:
+    """Apply the strict quality gate once a module leaves the legacy allowlist."""
+    if module_name in read_legacy_allowlist(root):
+        print(f"{module_name}: legacy module quality gate is deferred")
+        return
+
+    targets = [f"modules/{module_name}", f"tests/{module_name}"]
+    subprocess.run([sys.executable, "-m", "ruff", "check", *targets], cwd=root, check=True)
+    subprocess.run(
+        [sys.executable, "-m", "ruff", "format", "--check", *targets],
+        cwd=root,
+        check=True,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("module")
@@ -65,6 +82,7 @@ def main() -> int:
         f"{args.module}: {instance.name} v{instance.version}, "
         f"callback prefix {instance.callback_prefix!r}"
     )
+    run_quality(root, args.module)
     return 0 if run_tests(root, args.module) else 1
 
 

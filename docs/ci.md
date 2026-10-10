@@ -23,13 +23,15 @@ read-only, and every external GitHub Action is pinned to a full commit SHA.
 | `repository` | Enforces test ownership, secret/artifact policy, clean merges, and pinned Actions. |
 | `quality` | Lints maintained code, checks formatting, compiles all Python, and performs an offline application smoke. |
 | `tests` | Runs the complete suite with branch coverage on Python 3.10 and 3.13. |
-| `modules` | Imports and validates every module independently and runs its owned tests. |
+| `modules` | Imports and validates every module independently, then runs its owned lint, format, and test gates. |
 | `security` | Resolves and audits runtime dependencies with `pip-audit`. |
 | `CI / required` | Fails unless every preceding stage succeeds. Use this as the branch-protection check. |
 
 Coverage is uploaded from Python 3.13 for inspection. A global percentage is not yet
 used as a merge gate because the legacy modules predate automated tests. New modules
-are gated by the presence and success of their own suite instead.
+are gated by the presence and success of their own suite and by Ruff lint/format
+checks scoped to the module and its tests. The legacy allowlist temporarily defers
+both owned tests and module-scoped Ruff checks; removing an entry enables both gates.
 
 ## Recommended GitHub branch protection
 

@@ -27,7 +27,9 @@ keep optional live smoke tests outside the blocking CI path.
 
 The entries in `.ci/legacy-modules-without-tests.txt` are temporary debt for modules
 that existed before this policy. Do not add new modules to that file. Remove a legacy
-entry in the same change that introduces its first test suite.
+entry in the same change that introduces its first test suite. Modules outside the
+allowlist must also pass Ruff lint and formatting checks for both their implementation
+and their owned tests.
 
 ## Local validation
 
