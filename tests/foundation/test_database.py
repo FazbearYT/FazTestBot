@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, redirect_stdout
 from datetime import datetime, timedelta
 from io import StringIO
@@ -71,6 +72,31 @@ class DatabaseManagerCharacterizationTests(unittest.TestCase):
                 "SELECT module_stats FROM users WHERE user_id = ?", (7,)
             ).fetchone()[0]
         self.assertEqual({"cipher": 0, "ip_lookup": 1}, json.loads(raw_stats))
+
+    def test_concurrent_module_stat_updates_do_not_get_lost(self):
+        self.database.create_or_update_user(777, "parallel")
+
+        def increment_many(_worker):
+            for _ in range(20):
+                self.database.increment_module_stat(777, "parallel_module")
+
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            list(executor.map(increment_many, range(6)))
+
+        stats = self.database.get_user_stats(777)["module_stats"]
+        self.assertEqual(120, stats["parallel_module"])
+
+    def test_foreign_key_cascade_is_enabled_for_managed_connections(self):
+        self.database.create_or_update_user(888, "cascade")
+        self.database.log_cipher_operation(888, "caesar", "a", "b")
+
+        with self.database.database.connection(write=True) as connection:
+            connection.execute("DELETE FROM users WHERE user_id = 888")
+            remaining = connection.execute(
+                "SELECT COUNT(*) FROM cipher_operations WHERE user_id = 888"
+            ).fetchone()[0]
+
+        self.assertEqual(0, remaining)
 
     def test_retention_cleanup_removes_only_expired_cipher_operations(self):
         self.database.create_or_update_user(11)

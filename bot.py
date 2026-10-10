@@ -57,11 +57,18 @@ def build_runtime(
     manager: Any | None = None,
     register_handlers: Callable[[Any], None] | None = None,
     backup_callback: Callable[[], Any] | None = None,
+    migrate_database: Callable[[], Any] | None = None,
 ) -> BotRuntime:
     """Validate configuration and assemble, but do not start, the application."""
 
     settings = settings or load_settings()
     settings.require_startup_ready()
+
+    if migrate_database is None:
+        from core.migrations import DatabaseMigrator
+
+        migrate_database = DatabaseMigrator().apply_migrations
+    migrate_database()
 
     # Heavy imports are deliberately delayed until validation has succeeded.
     if bot_factory is None:

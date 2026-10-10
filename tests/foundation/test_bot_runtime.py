@@ -23,16 +23,19 @@ class BotRuntimeTests(unittest.TestCase):
 
         bot_factory = Mock()
         scheduler_factory = Mock()
+        migrate_database = Mock()
 
         with self.assertRaises(ConfigurationError):
             build_runtime(
                 Settings(),
                 bot_factory=bot_factory,
                 scheduler_factory=scheduler_factory,
+                migrate_database=migrate_database,
             )
 
         bot_factory.assert_not_called()
         scheduler_factory.assert_not_called()
+        migrate_database.assert_not_called()
 
     def test_build_registers_handlers_modules_and_cron_without_starting(self):
         from bot import build_runtime
@@ -54,6 +57,7 @@ class BotRuntimeTests(unittest.TestCase):
             manager=manager,
             register_handlers=register_handlers,
             backup_callback=backup_callback,
+            migrate_database=Mock(),
         )
 
         bot_factory.assert_called_once_with("token")
@@ -81,6 +85,7 @@ class BotRuntimeTests(unittest.TestCase):
             manager=Mock(discover_and_load=Mock(return_value=0)),
             register_handlers=Mock(),
             backup_callback=Mock(),
+            migrate_database=Mock(),
         )
 
         scheduler_factory.assert_not_called()
@@ -100,9 +105,30 @@ class BotRuntimeTests(unittest.TestCase):
                 manager=Mock(),
                 register_handlers=register_handlers,
                 backup_callback=Mock(),
+                migrate_database=Mock(),
             )
 
         bot_instance.stop_bot.assert_called_once_with()
+
+    def test_migrations_run_before_handlers_and_module_discovery(self):
+        from bot import build_runtime
+
+        events = []
+        bot_instance = Mock()
+        manager = Mock()
+        manager.discover_and_load.side_effect = lambda bot: events.append("modules") or 0
+
+        build_runtime(
+            Settings(bot_token="token", backup_enabled=False),
+            bot_factory=lambda token: events.append("bot") or bot_instance,
+            scheduler_factory=Mock(),
+            manager=manager,
+            register_handlers=lambda bot: events.append("handlers"),
+            backup_callback=Mock(),
+            migrate_database=lambda: events.append("migrations"),
+        )
+
+        self.assertEqual(["migrations", "bot", "handlers", "modules"], events)
 
     def test_run_stops_scheduler_and_bot_after_polling_failure(self):
         from bot import BotRuntime
