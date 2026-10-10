@@ -39,7 +39,8 @@ is not copied into diagnostic logs.
 ## Incident workflow
 
 1. Record the UTC time and the relevant `operation_id` shown in the JSONL log.
-2. Run `python -m scripts.doctor` for configuration checks without printing secrets.
+2. Run `python -m scripts.doctor` for read-only configuration, database, legacy-file,
+   and disk checks without printing secrets. Use `--json` for machine-readable output.
 3. Run `python -m scripts.database check` when the incident may involve persistence.
 4. Preserve only the minimum relevant log excerpt; review it before sharing.
 5. Never commit files from `temp/`, real `.env` files, databases, or log exports.
