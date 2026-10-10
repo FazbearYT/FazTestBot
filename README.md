@@ -43,3 +43,6 @@ Database migration, integrity-check, and backup procedures are documented in
 
 Runtime logging, redaction, correlation, and incident-diagnostics conventions are
 documented in [docs/observability.md](docs/observability.md).
+
+Admin access boundaries, module snapshots, destructive confirmations, and offline
+restore are documented in [docs/admin-panel.md](docs/admin-panel.md).

@@ -30,51 +30,8 @@ def main() -> int:
     python = sys.executable
 
     run(python, "-m", "scripts.ci.check_repository")
-    run(
-        python,
-        "-m",
-        "ruff",
-        "check",
-        "core/backup.py",
-        "core/bootstrap.py",
-        "core/database.py",
-        "core/exceptions.py",
-        "core/health.py",
-        "core/migrations.py",
-        "core/module_manager.py",
-        "core/observability.py",
-        "core/settings.py",
-        "core/storage.py",
-        "bot.py",
-        "config.py",
-        "scripts/doctor.py",
-        "scripts/database.py",
-        "scripts/ci",
-        "tests",
-    )
-    run(
-        python,
-        "-m",
-        "ruff",
-        "format",
-        "--check",
-        "core/backup.py",
-        "core/bootstrap.py",
-        "core/database.py",
-        "core/exceptions.py",
-        "core/health.py",
-        "core/migrations.py",
-        "core/module_manager.py",
-        "core/observability.py",
-        "core/settings.py",
-        "core/storage.py",
-        "bot.py",
-        "config.py",
-        "scripts/doctor.py",
-        "scripts/database.py",
-        "scripts/ci",
-        "tests",
-    )
+    run(python, "-m", "scripts.ci.quality", "check")
+    run(python, "-m", "scripts.ci.quality", "format")
     run(python, "-m", "compileall", "-q", "core", "modules", "scripts", "tests")
     run(python, "-m", "scripts.ci.application_smoke")
     run(python, "-m", "pip", "check")

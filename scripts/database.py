@@ -9,6 +9,7 @@ from pathlib import Path
 from core.bootstrap import migrate_database_safely
 from core.migrations import DatabaseMigrator, MigrationError
 from core.paths import BACKUPS_DIR, DATABASE_PATH
+from core.process_lock import ApplicationAlreadyRunningError, ApplicationLock
 from core.storage import DatabaseIntegrityError, SQLiteDatabase
 
 
@@ -53,17 +54,38 @@ def _backup(path: Path, backup_dir: Path) -> int:
     return 0 if success else 1
 
 
+def _restore(path: Path, backup_dir: Path, backup_file: str) -> int:
+    from core.backup import BackupManager
+
+    try:
+        with ApplicationLock():
+            manager = BackupManager(backup_dir=backup_dir, db_path=path)
+            success, message = manager.restore_backup(backup_file)
+            print(message)
+            if not success:
+                return 1
+            return _check(path)
+    except ApplicationAlreadyRunningError:
+        print("Database restore refused: FazTestBot is running; stop it and retry")
+        return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("check", "migrate", "backup"))
+    parser.add_argument("command", choices=("check", "migrate", "backup", "restore"))
     parser.add_argument("--db-path", type=Path, default=DATABASE_PATH)
     parser.add_argument("--backup-dir", type=Path, default=BACKUPS_DIR)
+    parser.add_argument("--backup-file")
     args = parser.parse_args()
 
     if args.command == "check":
         return _check(args.db_path)
     if args.command == "migrate":
         return _migrate(args.db_path, args.backup_dir)
+    if args.command == "restore":
+        if not args.backup_file:
+            parser.error("restore requires --backup-file")
+        return _restore(args.db_path, args.backup_dir, args.backup_file)
     return _backup(args.db_path, args.backup_dir)
 
 

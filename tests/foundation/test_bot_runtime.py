@@ -136,7 +136,13 @@ class BotRuntimeTests(unittest.TestCase):
         bot_instance = Mock()
         bot_instance.infinity_polling.side_effect = RuntimeError("polling failed")
         scheduler = Mock()
-        runtime = BotRuntime(bot=bot_instance, module_manager=Mock(), scheduler=scheduler)
+        application_lock = Mock()
+        runtime = BotRuntime(
+            bot=bot_instance,
+            module_manager=Mock(),
+            scheduler=scheduler,
+            application_lock=application_lock,
+        )
 
         with self.assertRaisesRegex(RuntimeError, "polling failed"):
             runtime.run()
@@ -144,8 +150,10 @@ class BotRuntimeTests(unittest.TestCase):
         scheduler.start.assert_called_once_with()
         scheduler.shutdown.assert_called_once_with(wait=False)
         bot_instance.stop_bot.assert_called_once_with()
+        application_lock.release.assert_called_once_with()
         runtime.shutdown()
         bot_instance.stop_bot.assert_called_once_with()
+        application_lock.release.assert_called_once_with()
 
     def test_scheduler_start_failure_still_stops_bot(self):
         from bot import BotRuntime

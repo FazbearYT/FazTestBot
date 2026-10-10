@@ -22,6 +22,7 @@ class BotRuntime:
     module_manager: Any
     scheduler: Any | None = None
     loaded_count: int = 0
+    application_lock: Any | None = None
     _scheduler_started: bool = False
     _stopped: bool = False
 
@@ -46,7 +47,11 @@ class BotRuntime:
             if self.scheduler is not None and self._scheduler_started:
                 self.scheduler.shutdown(wait=False)
         finally:
-            self.bot.stop_bot()
+            try:
+                self.bot.stop_bot()
+            finally:
+                if self.application_lock is not None:
+                    self.application_lock.release()
 
 
 def build_runtime(
@@ -164,21 +169,30 @@ def _print_startup_summary(runtime: BotRuntime, settings: Settings) -> None:
 
 
 def main() -> int:
+    application_lock = None
     try:
         settings = load_settings()
         from core.observability import configure_logging, event_fields, get_logger
+        from core.process_lock import ApplicationLock
 
         configure_logging(
             level=settings.log_level,
             retention_days=settings.log_retention_days,
         )
         runtime_logger = get_logger("runtime")
+        application_lock = ApplicationLock()
+        application_lock.acquire()
         runtime = build_runtime(settings)
+        runtime.application_lock = application_lock
     except ConfigurationError as error:
+        if application_lock is not None:
+            application_lock.release()
         print(f"Configuration error: {error}", file=sys.stderr)
         print("Run `python -m scripts.doctor` for details.", file=sys.stderr)
         return 2
     except Exception as error:
+        if application_lock is not None:
+            application_lock.release()
         if "runtime_logger" in locals():
             runtime_logger.exception(
                 "application startup failed",
@@ -188,16 +202,18 @@ def main() -> int:
             print(f"Startup failed: {error}", file=sys.stderr)
         return 1
 
-    _print_startup_summary(runtime, settings)
     try:
+        _print_startup_summary(runtime, settings)
         runtime.run()
     except KeyboardInterrupt:
+        runtime.shutdown()
         runtime_logger.info(
             "FazTestBot stopped by operator",
             extra=event_fields("application.stopped", reason="keyboard_interrupt"),
         )
         return 0
     except Exception:
+        runtime.shutdown()
         runtime_logger.exception(
             "application runtime failed",
             extra=event_fields("application.runtime_failed"),

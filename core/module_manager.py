@@ -5,7 +5,7 @@ import importlib
 import os
 from typing import Any
 
-from .module_base import BaseModule
+from .module_base import BaseModule, ModuleAdminSnapshot
 from .observability import event_fields, get_logger
 
 logger = get_logger(__name__)
@@ -196,6 +196,52 @@ class ModuleManager:
     def get_loaded_count(self) -> int:
         """Получение количества загруженных модулей"""
         return len(self.modules)
+
+    def get_admin_snapshots(self) -> list[ModuleAdminSnapshot]:
+        """Return stable, sorted operational summaries for loaded modules."""
+
+        snapshots = []
+        for module in self.modules.values():
+            try:
+                snapshots.append(module.get_admin_snapshot())
+            except Exception as error:
+                logger.warning(
+                    "module %s admin snapshot failed",
+                    module.id,
+                    exc_info=(type(error), error, error.__traceback__),
+                    extra=event_fields("module.admin_snapshot_failed", module_id=module.id),
+                )
+                snapshots.append(
+                    ModuleAdminSnapshot(
+                        module_id=module.id,
+                        name=module.name,
+                        icon=module.icon,
+                        version=module.version,
+                        callback_prefix=module.callback_prefix,
+                        status="error",
+                        summary="operational snapshot unavailable",
+                        active_state_count=0,
+                    )
+                )
+
+        loaded_ids = {snapshot.module_id for snapshot in snapshots}
+        for failure in self._load_errors:
+            module_id = str(failure["module"])
+            if module_id in loaded_ids:
+                continue
+            snapshots.append(
+                ModuleAdminSnapshot(
+                    module_id=module_id,
+                    name=module_id,
+                    icon="⚠️",
+                    version="unknown",
+                    callback_prefix="",
+                    status="error",
+                    summary="module failed to load",
+                    active_state_count=0,
+                )
+            )
+        return sorted(snapshots, key=lambda snapshot: snapshot.module_id)
 
     def get_errors(self) -> list[dict]:
         """Получение списка ошибок загрузки"""

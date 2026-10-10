@@ -2,8 +2,34 @@
 # Базовый класс для всех модулей FazTestBot
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any
+
 from telebot import types
-from typing import Optional, Dict, Any
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleMetric:
+    """One bounded, non-sensitive aggregate exposed by a module."""
+
+    key: str
+    label: str
+    value: int | float | str | bool
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleAdminSnapshot:
+    """Non-sensitive module state exposed to operational interfaces."""
+
+    module_id: str
+    name: str
+    icon: str
+    version: str
+    callback_prefix: str
+    status: str
+    summary: str
+    active_state_count: int
+    metrics: tuple[ModuleMetric, ...] = ()
 
 
 class BaseModule(ABC):
@@ -16,13 +42,13 @@ class BaseModule(ABC):
     """
 
     def __init__(
-            self,
-            module_id: str,
-            name: str,
-            description: str,
-            icon: str,
-            version: str = "1.0.0",
-            callback_prefix: Optional[str] = None
+        self,
+        module_id: str,
+        name: str,
+        description: str,
+        icon: str,
+        version: str = "1.0.0",
+        callback_prefix: str | None = None,
     ):
         """
         Инициализация базового модуля.
@@ -40,7 +66,7 @@ class BaseModule(ABC):
         self.icon = icon
         self.version = version
         self.callback_prefix = callback_prefix or f"{module_id}_"
-        self.user_state: Dict[int, Dict[str, Any]] = {}  # Состояния пользователей {user_id: state}
+        self.user_state: dict[int, dict[str, Any]] = {}  # Состояния пользователей {user_id: state}
 
     @abstractmethod
     def handle_entry(self, bot: Any, call: Any) -> None:
@@ -88,7 +114,7 @@ class BaseModule(ABC):
         if user_id in self.user_state:
             del self.user_state[user_id]
 
-    def get_user_state(self, user_id: int, key: Optional[str] = None, default: Any = None) -> Any:
+    def get_user_state(self, user_id: int, key: str | None = None, default: Any = None) -> Any:
         """
         Получение состояния пользователя.
 
@@ -138,6 +164,20 @@ class BaseModule(ABC):
         :param bot: Экземпляр TeleBot
         """
         pass
+
+    def get_admin_snapshot(self) -> ModuleAdminSnapshot:
+        """Return the module's safe operational summary for admin tooling."""
+
+        return ModuleAdminSnapshot(
+            module_id=self.id,
+            name=self.name,
+            icon=self.icon,
+            version=self.version,
+            callback_prefix=self.callback_prefix,
+            status="ok",
+            summary="module loaded",
+            active_state_count=len(self.user_state),
+        )
 
     def validate(self) -> tuple:
         """

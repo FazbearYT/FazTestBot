@@ -109,7 +109,7 @@ class BackupManager:
             # Получаем список всех бэкапов
             backup_files = []
             for filename in os.listdir(self.backup_dir):
-                if filename.startswith("users_") and filename.endswith(".db"):
+                if BACKUP_FILENAME_PATTERN.fullmatch(filename):
                     filepath = os.path.join(self.backup_dir, filename)
                     backup_files.append(
                         {
@@ -175,7 +175,7 @@ class BackupManager:
 
         try:
             for filename in os.listdir(self.backup_dir):
-                if filename.startswith("users_") and filename.endswith(".db"):
+                if BACKUP_FILENAME_PATTERN.fullmatch(filename):
                     filepath = os.path.join(self.backup_dir, filename)
                     stat = os.stat(filepath)
 

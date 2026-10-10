@@ -33,6 +33,18 @@ python -m scripts.database migrate
 python -m scripts.database check
 ```
 
+Для восстановления выбранной копии используйте отдельную offline-операцию:
+
+```bash
+python -m scripts.database restore --backup-file users_manual_YYYYMMDD_HHMMSS_ffffff.db
+python -m scripts.database check
+```
+
+`restore` проверяет формат и целостность выбранного файла, создаёт защитную копию
+текущей БД и проверяет восстановленную БД. Онлайн-восстановление из Telegram-панели
+намеренно отключено. Запущенный бот удерживает межпроцессную блокировку; CLI
+откажется восстанавливать БД, пока процесс бота не остановлен.
+
 `migrate` creates another pre-migration backup automatically when changes are
 pending. Keep the bot stopped until both the migration and final integrity check
 succeed. Do not run these commands against the production database as part of CI.

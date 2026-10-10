@@ -2,8 +2,11 @@
 # Система скрытой админ-панели с надёжной аутентификацией
 
 import csv
+import hmac
 import json
+from collections.abc import Callable
 from datetime import datetime, timedelta
+from threading import RLock
 
 from config import ADMIN_SECRET_CODE, ADMIN_SESSION_HOURS, ADMINS
 from core.migrations import DatabaseMigrator
@@ -14,10 +17,32 @@ from core.storage import SQLiteDatabase
 class AdminManager:
     """Менеджер административного доступа и функций"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(
+        self,
+        db_path: str = None,
+        *,
+        admins: tuple[int, ...] | list[int] | None = None,
+        secret_code: str | None = None,
+        session_hours: int | None = None,
+        auth_max_failures: int = 5,
+        auth_window_minutes: int = 15,
+        auth_lockout_minutes: int = 15,
+        auth_failure_capacity: int = 4096,
+        now: Callable[[], datetime] = datetime.now,
+    ):
         self.db_path = db_path or DATABASE_PATH
         self.database = SQLiteDatabase(self.db_path)
+        self.admins = tuple(ADMINS if admins is None else admins)
+        self.secret_code = ADMIN_SECRET_CODE if secret_code is None else secret_code
+        self.session_hours = ADMIN_SESSION_HOURS if session_hours is None else session_hours
+        self.auth_max_failures = max(1, auth_max_failures)
+        self.auth_window = timedelta(minutes=auth_window_minutes)
+        self.auth_lockout = timedelta(minutes=auth_lockout_minutes)
+        self.auth_failure_capacity = max(1, auth_failure_capacity)
+        self.now = now
         self.admin_sessions = {}
+        self._auth_failures: dict[int, dict[str, object]] = {}
+        self._auth_lock = RLock()
         self._init_admin_log_table()
 
     def _init_admin_log_table(self):
@@ -26,27 +51,67 @@ class AdminManager:
 
     def authenticate_by_code(self, user_id: int, code: str) -> bool:
         """Аутентификация через секретное кодовое слово"""
-        if not ADMIN_SECRET_CODE:
+        if not self.secret_code:
             return False
-        if code.strip() == ADMIN_SECRET_CODE:
-            expires = datetime.now() + timedelta(hours=ADMIN_SESSION_HOURS)
-            self.admin_sessions[user_id] = {"until": expires}
-            self._log_admin_action(user_id, "auth_by_code", None, f"Session until {expires}")
-            return True
-        return False
+        now = self.now()
+        with self._auth_lock:
+            self._prune_auth_failures(now)
+            attempt = self._auth_failures.get(user_id)
+            if attempt is not None:
+                locked_until = attempt.get("locked_until")
+                if isinstance(locked_until, datetime) and now < locked_until:
+                    return False
+            supplied = code.strip().encode("utf-8")
+            expected = self.secret_code.encode("utf-8")
+            if hmac.compare_digest(supplied, expected):
+                self._auth_failures.pop(user_id, None)
+                expires = now + timedelta(hours=self.session_hours)
+                self.admin_sessions[user_id] = {"until": expires}
+            else:
+                if attempt is None:
+                    if len(self._auth_failures) >= self.auth_failure_capacity:
+                        self._auth_failures.pop(next(iter(self._auth_failures)))
+                    attempt = {"count": 0, "first_failure": now, "locked_until": None}
+                    self._auth_failures[user_id] = attempt
+                attempt["count"] = int(attempt["count"]) + 1
+                if attempt["count"] >= self.auth_max_failures:
+                    attempt["locked_until"] = now + self.auth_lockout
+                return False
+        self._log_admin_action(user_id, "auth_by_code", None, f"Session until {expires}")
+        return True
+
+    def _prune_auth_failures(self, now: datetime) -> None:
+        expired = []
+        for user_id, attempt in self._auth_failures.items():
+            first_failure = attempt.get("first_failure")
+            locked_until = attempt.get("locked_until")
+            window_expired = (
+                not isinstance(first_failure, datetime) or now - first_failure >= self.auth_window
+            )
+            lock_active = isinstance(locked_until, datetime) and now < locked_until
+            if window_expired and not lock_active:
+                expired.append(user_id)
+        for user_id in expired:
+            self._auth_failures.pop(user_id, None)
 
     def is_admin(self, user_id: int) -> bool:
         """Проверка прав администратора"""
-        if user_id in ADMINS:
-            return True
-
-        if user_id in self.admin_sessions:
-            if datetime.now() < self.admin_sessions[user_id]["until"]:
+        with self._auth_lock:
+            if user_id in self.admins:
                 return True
-            else:
+
+            if user_id in self.admin_sessions:
+                if self.now() < self.admin_sessions[user_id]["until"]:
+                    return True
                 self.admin_sessions.pop(user_id, None)
 
         return False
+
+    def revoke_session(self, user_id: int) -> bool:
+        """Revoke a code-authenticated session; configured admins remain admins."""
+
+        with self._auth_lock:
+            return self.admin_sessions.pop(user_id, None) is not None
 
     def log_admin_action(
         self, admin_id: int, action: str, target_user_id: int | None = None, details: str = ""
@@ -279,11 +344,11 @@ class AdminManager:
             ops_deleted = cursor.rowcount
 
             # ИСПРАВЛЕНО: SQL injection через параметризованный запрос
-            if ADMINS:
-                placeholders = ",".join(["?" for _ in ADMINS])
+            if self.admins:
+                placeholders = ",".join(["?" for _ in self.admins])
                 cursor = connection.execute(
                     f"DELETE FROM users WHERE user_id NOT IN ({placeholders})",
-                    ADMINS,
+                    self.admins,
                 )
             else:
                 cursor = connection.execute("DELETE FROM users")
