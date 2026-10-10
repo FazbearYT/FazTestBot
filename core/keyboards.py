@@ -68,11 +68,25 @@ def stats_navigation_keyboard():
     return kb
 
 
+def admin_observability_keyboard():
+    """Navigation between the overview, module status, and readiness pages."""
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("📊 Обзор", callback_data="admin_stats"),
+        types.InlineKeyboardButton("🧩 Модули", callback_data="admin_modules"),
+        types.InlineKeyboardButton("🩺 Готовность", callback_data="admin_health"),
+        types.InlineKeyboardButton("🏠 В меню", callback_data="admin_back_to_menu"),
+    )
+    return kb
+
+
 def admin_menu_keyboard():
     """Главное меню админ-панели"""
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("📊 Статистика", callback_data="admin_stats"),
+        types.InlineKeyboardButton("🧩 Модули", callback_data="admin_modules"),
+        types.InlineKeyboardButton("🩺 Готовность", callback_data="admin_health"),
         types.InlineKeyboardButton("👤 Профиль", callback_data="admin_user_search"),
         types.InlineKeyboardButton("🔍 Поиск", callback_data="admin_search"),
         types.InlineKeyboardButton("💾 Экспорт", callback_data="admin_export"),

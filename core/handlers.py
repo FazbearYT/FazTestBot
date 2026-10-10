@@ -14,6 +14,7 @@ from .keyboards import (
     cleanup_keyboard,
     export_keyboard,
     stats_navigation_keyboard,
+    admin_observability_keyboard,
     easter_egg_keyboard,
     backup_menu_keyboard,
     backup_list_keyboard,
@@ -24,8 +25,10 @@ from core.database import DatabaseManager
 from core.admin import admin_manager
 from core.easter_eggs import EasterEggManager, easter_egg_manager
 from core.backup import backup_manager
+from core.admin_panel import AdminPanelService, render_health, render_modules, render_overview
 from core.exceptions import classify_exception, handle_exception
 from core.observability import event_fields, get_logger
+from core.settings import load_settings
 
 logger = get_logger(__name__)
 
@@ -42,6 +45,8 @@ user_input_state = {}  # {user_id: {'mode': 'search_user', 'message_id': int}}
 
 def register_global_handlers(bot):
     """Регистрация глобальных обработчиков с поддержкой пасхалок и блокировки"""
+
+    admin_panel = AdminPanelService(admin_mgr, module_manager, load_settings())
 
     @bot.message_handler(commands=['start'])
     def send_welcome(message):
@@ -322,31 +327,31 @@ def register_global_handlers(bot):
 
             # Главное админ-меню
             if call.data == "admin_stats":
-                stats = admin_mgr.get_global_stats()
-
-                text = "👑 <b>Админ-панель — Статистика</b>\n\n"
-                text += f"👥 Всего пользователей: <b>{stats['total_users']}</b>\n"
-                text += f"✅ Активно за неделю: <b>{stats['active_users']}</b>\n"
-                text += f"🔐 Всего операций: <b>{stats['total_operations']}</b>\n"
-                text += f"📅 Сегодня: <b>{stats['today_operations']}</b>\n\n"
-
-                text += "<b>Распределение по шифрам:</b>\n"
-                total = sum(stats['cipher_distribution'].values()) if stats['cipher_distribution'] else 0
-                for cipher, count in stats['cipher_distribution'].items():
-                    percent = (count / total * 100) if total > 0 else 0
-                    cipher_name = {
-                        "morze": "Азбука Морзе",
-                        "numbers": "Числовой",
-                        "caesar": "Цезарь",
-                        "qr": "QR-код"
-                    }.get(cipher, cipher)
-                    text += f"• {cipher_name}: {count} ({percent:.1f}%)\n"
+                text = render_overview(admin_panel.get_dashboard())
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text=text,
-                    reply_markup=stats_navigation_keyboard(),
+                    reply_markup=admin_observability_keyboard(),
+                    parse_mode="HTML"
+                )
+
+            elif call.data == "admin_modules":
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=render_modules(admin_panel.get_dashboard()),
+                    reply_markup=admin_observability_keyboard(),
+                    parse_mode="HTML"
+                )
+
+            elif call.data == "admin_health":
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=render_health(admin_panel.get_dashboard()),
+                    reply_markup=admin_observability_keyboard(),
                     parse_mode="HTML"
                 )
 
@@ -554,31 +559,13 @@ def register_global_handlers(bot):
 
             # Обновление статистики
             elif call.data == "admin_stats_refresh":
-                stats = admin_mgr.get_global_stats()
-
-                text = "👑 <b>Админ-панель — Статистика</b>\n\n"
-                text += f"👥 Всего пользователей: <b>{stats['total_users']}</b>\n"
-                text += f"✅ Активно за неделю: <b>{stats['active_users']}</b>\n"
-                text += f"🔐 Всего операций: <b>{stats['total_operations']}</b>\n"
-                text += f"📅 Сегодня: <b>{stats['today_operations']}</b>\n\n"
-
-                text += "<b>Распределение по шифрам:</b>\n"
-                total = sum(stats['cipher_distribution'].values()) if stats['cipher_distribution'] else 0
-                for cipher, count in stats['cipher_distribution'].items():
-                    percent = (count / total * 100) if total > 0 else 0
-                    cipher_name = {
-                        "morze": "Азбука Морзе",
-                        "numbers": "Числовой",
-                        "caesar": "Цезарь",
-                        "qr": "QR-код"
-                    }.get(cipher, cipher)
-                    text += f"• {cipher_name}: {count} ({percent:.1f}%)\n"
+                text = render_overview(admin_panel.get_dashboard())
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text=text,
-                    reply_markup=stats_navigation_keyboard(),
+                    reply_markup=admin_observability_keyboard(),
                     parse_mode="HTML"
                 )
 

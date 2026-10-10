@@ -29,6 +29,16 @@ class FailingModule(BaseModule):
         raise RuntimeError("storage is unavailable")
 
 
+class SnapshotFailingModule(FailingModule):
+    def __init__(self):
+        super().__init__()
+        self.id = "snapshot_broken"
+        self.name = "Snapshot Broken"
+
+    def get_admin_snapshot(self):
+        raise RuntimeError("must not break dashboard")
+
+
 class ModuleManagerTests(unittest.TestCase):
     def test_on_load_failure_rolls_back_registration(self):
         manager = ModuleManager()
@@ -56,6 +66,19 @@ class ModuleManagerTests(unittest.TestCase):
 
         self.assertEqual(0, loaded)
         self.assertEqual([], manager.get_errors())
+
+    def test_admin_snapshot_failures_are_isolated_and_sanitized(self):
+        manager = ModuleManager()
+        manager.modules = {"snapshot_broken": SnapshotFailingModule()}
+        manager._load_errors = [
+            {"module": "unavailable", "error": "secret details", "timestamp": "now"}
+        ]
+
+        snapshots = manager.get_admin_snapshots()
+
+        self.assertEqual(["snapshot_broken", "unavailable"], [item.module_id for item in snapshots])
+        self.assertTrue(all(item.status == "error" for item in snapshots))
+        self.assertNotIn("secret details", repr(snapshots))
 
 
 if __name__ == "__main__":
