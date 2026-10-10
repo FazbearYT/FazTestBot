@@ -74,9 +74,7 @@ class FakeBot:
             self.fail_next_add_full = False
             raise api_error("Bad Request: STICKERS_TOO_MUCH")
         input_sticker = kwargs["sticker"]
-        self.sets[kwargs["name"]].stickers.append(
-            self._remote_sticker(input_sticker.sticker)
-        )
+        self.sets[kwargs["name"]].stickers.append(self._remote_sticker(input_sticker.sticker))
         return True
 
     def _remote_sticker(self, file_id):
@@ -134,9 +132,7 @@ class StickerVaultServiceTests(unittest.TestCase):
                 for index in range(PACK_CAPACITY)
             ],
         )
-        self.repository.upsert_pack(
-            StickerPackRecord(123, 1, first_name, PACK_CAPACITY)
-        )
+        self.repository.upsert_pack(StickerPackRecord(123, 1, first_name, PACK_CAPACITY))
 
         result = self.add_file("next-file", "next-unique", "video")
 
@@ -195,9 +191,7 @@ class StickerVaultServiceTests(unittest.TestCase):
                 for index in range(PACK_CAPACITY - 1)
             ],
         )
-        self.repository.upsert_pack(
-            StickerPackRecord(123, 1, first_name, PACK_CAPACITY - 1)
-        )
+        self.repository.upsert_pack(StickerPackRecord(123, 1, first_name, PACK_CAPACITY - 1))
         self.bot.fail_next_add_full = True
 
         result = self.add_file("race-file", "race-unique", "video")
@@ -233,9 +227,7 @@ class StickerVaultServiceTests(unittest.TestCase):
 
         self.assertEqual(AddStatus.CREATED, result.status)
         self.assertEqual(4, result.part_number)
-        self.assertEqual(
-            [1, 2, 3, 4], [r.part_number for r in self.repository.list_packs(123)]
-        )
+        self.assertEqual([1, 2, 3, 4], [r.part_number for r in self.repository.list_packs(123)])
 
     def test_recognizes_real_pack_name_occupied_description(self):
         error = api_error("Bad Request: sticker set name is already occupied")

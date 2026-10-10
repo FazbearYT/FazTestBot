@@ -72,8 +72,6 @@ class PendingStickerStore:
 
     def _remove_expired(self) -> None:
         now = self._clock()
-        expired = [
-            token for token, entry in self._entries.items() if entry.expires_at <= now
-        ]
+        expired = [token for token, entry in self._entries.items() if entry.expires_at <= now]
         for token in expired:
             del self._entries[token]

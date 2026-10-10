@@ -107,21 +107,15 @@ class StickerVaultModuleTests(unittest.TestCase):
         ):
             self.module._handle_sticker_message(message(source), self.bot)
             keyboard = self.bot.replies[-1][2]["reply_markup"]
-            callbacks = [
-                button.callback_data for row in keyboard.keyboard for button in row
-            ]
-            self.assertTrue(
-                all(len(value.encode("utf-8")) <= 64 for value in callbacks)
-            )
+            callbacks = [button.callback_data for row in keyboard.keyboard for button in row]
+            self.assertTrue(all(len(value.encode("utf-8")) <= 64 for value in callbacks))
             token = callbacks[0].removeprefix("sv_add_")
             lookup = self.store.take(token, 321)
             self.assertEqual(expected, lookup.sticker.sticker_format)
 
     def test_group_and_non_regular_stickers_are_rejected(self):
         self.module._handle_sticker_message(message(sticker(), "group"), self.bot)
-        self.module._handle_sticker_message(
-            message(sticker(type="custom_emoji")), self.bot
-        )
+        self.module._handle_sticker_message(message(sticker(type="custom_emoji")), self.bot)
 
         self.assertIn("личном чате", self.bot.replies[0][1])
         self.assertIn("обычные стикеры", self.bot.replies[1][1])
@@ -166,9 +160,7 @@ class StickerVaultModuleTests(unittest.TestCase):
 
     def test_retryable_add_failure_gets_a_fresh_action_token(self):
         self.module._handle_sticker_message(message(sticker()), self.bot)
-        old_callback = (
-            self.bot.replies[-1][2]["reply_markup"].keyboard[0][0].callback_data
-        )
+        old_callback = self.bot.replies[-1][2]["reply_markup"].keyboard[0][0].callback_data
         self.module.service = FailingService()
         call = SimpleNamespace(
             data=old_callback,
@@ -200,11 +192,7 @@ class StickerVaultModuleTests(unittest.TestCase):
         self.module.handle_entry(self.bot, call)
 
         self.assertIn("только в личном чате", self.bot.edits[-1]["text"])
-        buttons = [
-            button
-            for row in self.bot.edits[-1]["reply_markup"].keyboard
-            for button in row
-        ]
+        buttons = [button for row in self.bot.edits[-1]["reply_markup"].keyboard for button in row]
         self.assertTrue(all(button.url is None for button in buttons))
 
 

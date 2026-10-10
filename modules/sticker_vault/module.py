@@ -67,9 +67,7 @@ class StickerVaultModule(BaseModule):
             self._show_private_only(bot, call)
             return
         self._ensure_storage()
-        self._show_menu(
-            bot, call.message.chat.id, call.message.message_id, call.from_user.id
-        )
+        self._show_menu(bot, call.message.chat.id, call.message.message_id, call.from_user.id)
 
     def handle_callback(self, bot: Any, call: Any) -> None:
         self._ensure_storage()
@@ -77,9 +75,7 @@ class StickerVaultModule(BaseModule):
             if not self._is_private_call(call):
                 self._show_private_only(bot, call)
                 return
-            self._show_menu(
-                bot, call.message.chat.id, call.message.message_id, call.from_user.id
-            )
+            self._show_menu(bot, call.message.chat.id, call.message.message_id, call.from_user.id)
             return
 
         action, token = self._parse_action(call.data)
@@ -94,9 +90,7 @@ class StickerVaultModule(BaseModule):
 
         lookup = self.pending_store.take(token, call.from_user.id)
         if lookup.status is PendingLookupStatus.FORBIDDEN:
-            self._safe_edit(
-                bot, call, "⚠️ Это действие принадлежит другому пользователю."
-            )
+            self._safe_edit(bot, call, "⚠️ Это действие принадлежит другому пользователю.")
             return
         if lookup.status is PendingLookupStatus.MISSING or lookup.sticker is None:
             self._safe_edit(
@@ -108,9 +102,7 @@ class StickerVaultModule(BaseModule):
 
         sticker = lookup.sticker
         if call.message.chat.id != sticker.chat_id:
-            self._safe_edit(
-                bot, call, "⚠️ Это действие доступно только в исходном чате."
-            )
+            self._safe_edit(bot, call, "⚠️ Это действие доступно только в исходном чате.")
             return
 
         if action == "cancel":
@@ -136,9 +128,7 @@ class StickerVaultModule(BaseModule):
         )
 
         if message.chat.type != "private":
-            bot.reply_to(
-                message, "Sticker Vault работает только в личном чате с ботом."
-            )
+            bot.reply_to(message, "Sticker Vault работает только в личном чате с ботом.")
             return
 
         source = message.sticker
@@ -200,9 +190,7 @@ class StickerVaultModule(BaseModule):
         if self.service is None:
             self.service = StickerVaultService(bot, self.repository)
         display_name = " ".join(
-            part
-            for part in (call.from_user.first_name, call.from_user.last_name)
-            if part
+            part for part in (call.from_user.first_name, call.from_user.last_name) if part
         )
         try:
             result = self.service.add(sticker, display_name)
@@ -233,9 +221,7 @@ class StickerVaultModule(BaseModule):
         self._safe_edit(bot, call, text, result_keyboard(result.pack_name))
 
     def _download_sticker(self, bot: Any, call: Any, sticker: PendingSticker) -> None:
-        extension = {"static": "webp", "animated": "tgs", "video": "webm"}[
-            sticker.sticker_format
-        ]
+        extension = {"static": "webp", "animated": "tgs", "video": "webm"}[sticker.sticker_format]
         filename = f"sticker_{sticker.file_unique_id[:16]}.{extension}"
         try:
             file_info = bot.get_file(sticker.file_id)
@@ -255,9 +241,7 @@ class StickerVaultModule(BaseModule):
                 self._retry_keyboard(sticker),
             )
             return
-        self._safe_edit(
-            bot, call, f"📥 Файл отправлен: <code>{escape(filename)}</code>"
-        )
+        self._safe_edit(bot, call, f"📥 Файл отправлен: <code>{escape(filename)}</code>")
 
     def _ensure_storage(self) -> None:
         if self.repository is None:

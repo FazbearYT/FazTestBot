@@ -81,14 +81,10 @@ class StickerVaultRepository:
             )
             connection.commit()
 
-    def replace_user_packs(
-        self, user_id: int, records: Iterable[StickerPackRecord]
-    ) -> None:
+    def replace_user_packs(self, user_id: int, records: Iterable[StickerPackRecord]) -> None:
         records = list(records)
         with closing(self._connect()) as connection:
-            connection.execute(
-                f"DELETE FROM {PACK_TABLE} WHERE user_id = ?", (user_id,)
-            )
+            connection.execute(f"DELETE FROM {PACK_TABLE} WHERE user_id = ?", (user_id,))
             connection.executemany(
                 f"""
                 INSERT INTO {PACK_TABLE} (user_id, part_number, pack_name, last_known_count)

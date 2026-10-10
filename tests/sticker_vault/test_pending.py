@@ -5,9 +5,7 @@ from modules.sticker_vault.pending import PendingStickerStore
 
 
 def pending(user_id: int, file_id: str = "file") -> PendingSticker:
-    return PendingSticker(
-        user_id, user_id, file_id, f"unique-{file_id}", "static", "🙂"
-    )
+    return PendingSticker(user_id, user_id, file_id, f"unique-{file_id}", "static", "🙂")
 
 
 class PendingStickerStoreTests(unittest.TestCase):

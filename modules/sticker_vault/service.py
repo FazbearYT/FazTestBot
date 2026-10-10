@@ -42,9 +42,7 @@ class StickerVaultService:
     ):
         self.bot = bot
         self.repository = repository
-        self._bot_username = (
-            self._normalize_bot_username(bot_username) if bot_username else None
-        )
+        self._bot_username = self._normalize_bot_username(bot_username) if bot_username else None
         self._username_lock = threading.Lock()
         self._locks_guard = threading.Lock()
         self._user_locks: dict[int, threading.Lock] = {}
@@ -115,13 +113,9 @@ class StickerVaultService:
                 last_known_count=count,
             )
             self.repository.upsert_pack(updated)
-            return AddResult(
-                AddStatus.ADDED, updated.pack_name, updated.part_number, count
-            )
+            return AddResult(AddStatus.ADDED, updated.pack_name, updated.part_number, count)
 
-        next_part = (
-            max((remote.record.part_number for remote in remote_packs), default=0) + 1
-        )
+        next_part = max((remote.record.part_number for remote in remote_packs), default=0) + 1
         return self._create_pack(sticker, user_display_name, input_sticker, next_part)
 
     def _create_pack(
@@ -276,9 +270,7 @@ class StickerVaultService:
     @staticmethod
     def _normalize_bot_username(username: str | None) -> str:
         normalized = (username or "").lstrip("@").lower()
-        if not normalized or not re.fullmatch(
-            r"[A-Za-z][A-Za-z0-9_]{2,31}", normalized
-        ):
+        if not normalized or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{2,31}", normalized):
             raise StickerVaultError("Telegram не вернул корректное имя бота.")
         return normalized
 
@@ -305,9 +297,7 @@ class StickerVaultService:
     @classmethod
     def _is_missing_pack(cls, exc: ApiTelegramException) -> bool:
         description = cls._api_description(exc)
-        return (
-            "STICKERSET_INVALID" in description or "STICKERSET_NOT_FOUND" in description
-        )
+        return "STICKERSET_INVALID" in description or "STICKERSET_NOT_FOUND" in description
 
     @classmethod
     def _is_pack_name_occupied(cls, exc: ApiTelegramException) -> bool:
@@ -334,22 +324,16 @@ class StickerVaultService:
                 return StickerVaultError(
                     f"Слишком много запросов к Telegram. Повторите через {retry_after} сек."
                 )
-            return StickerVaultError(
-                "Слишком много запросов к Telegram. Повторите немного позже."
-            )
+            return StickerVaultError("Слишком много запросов к Telegram. Повторите немного позже.")
         if "USER_ID_INVALID" in description:
-            return StickerVaultError(
-                "Сначала откройте личный чат с ботом и отправьте /start."
-            )
+            return StickerVaultError("Сначала откройте личный чат с ботом и отправьте /start.")
         if "STICKER_EMOJI_INVALID" in description:
             return StickerVaultError("Telegram не принял emoji этого стикера.")
         if "STICKER" in description and "TOO_MUCH" in description:
             return StickerVaultError("Текущая часть стикерпака заполнена.")
         if "STICKER_FILE_INVALID" in description or "STICKER_INVALID" in description:
             return StickerVaultError("Telegram не принял файл стикера.")
-        return StickerVaultError(
-            "Telegram не смог изменить стикерпак. Попробуйте позже."
-        )
+        return StickerVaultError("Telegram не смог изменить стикерпак. Попробуйте позже.")
 
     @staticmethod
     def _api_description(exc: ApiTelegramException) -> str:
