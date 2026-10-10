@@ -37,7 +37,7 @@ def main() -> int:
         "check",
         "core/module_manager.py",
         "scripts/ci",
-        "tests/ci",
+        "tests",
     )
     run(
         python,
@@ -47,7 +47,7 @@ def main() -> int:
         "--check",
         "core/module_manager.py",
         "scripts/ci",
-        "tests/ci",
+        "tests",
     )
     run(python, "-m", "compileall", "-q", "core", "modules", "scripts", "tests")
     run(python, "-m", "scripts.ci.application_smoke")
