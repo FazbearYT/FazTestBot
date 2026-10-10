@@ -11,11 +11,20 @@ from modules.sticker_vault.repository import StickerVaultRepository
 from modules.sticker_vault.service import StickerVaultService
 
 
-def api_error(description: str) -> ApiTelegramException:
+def api_error(
+    description: str,
+    error_code: int = 400,
+    parameters: dict | None = None,
+) -> ApiTelegramException:
     return ApiTelegramException(
         "test",
         None,
-        {"ok": False, "error_code": 400, "description": description},
+        {
+            "ok": False,
+            "error_code": error_code,
+            "description": description,
+            **({"parameters": parameters} if parameters else {}),
+        },
     )
 
 
@@ -50,6 +59,8 @@ class FakeBot:
     def create_new_sticker_set(self, **kwargs):
         self.create_calls.append(kwargs)
         name = kwargs["name"]
+        if name in self.sets:
+            raise api_error("Bad Request: sticker set name is already occupied")
         input_sticker = kwargs["stickers"][0]
         self.sets[name] = SimpleNamespace(
             name=name,
@@ -203,6 +214,66 @@ class StickerVaultServiceTests(unittest.TestCase):
             self.service.add(pending("bad", "bad-unique", "unknown"), "Fazbear")
 
         self.assertEqual([], self.bot.create_calls)
+
+    def test_recovers_all_remote_parts_when_database_is_empty(self):
+        for part_number in range(1, 4):
+            pack_name = self.service.build_pack_name(123, part_number)
+            self.bot.sets[pack_name] = SimpleNamespace(
+                name=pack_name,
+                stickers=[
+                    SimpleNamespace(
+                        file_id=f"f-{part_number}-{index}",
+                        file_unique_id=f"u-{part_number}-{index}",
+                    )
+                    for index in range(PACK_CAPACITY)
+                ],
+            )
+
+        result = self.add_file("part-four", "part-four-unique", "static")
+
+        self.assertEqual(AddStatus.CREATED, result.status)
+        self.assertEqual(4, result.part_number)
+        self.assertEqual(
+            [1, 2, 3, 4], [r.part_number for r in self.repository.list_packs(123)]
+        )
+
+    def test_recognizes_real_pack_name_occupied_description(self):
+        error = api_error("Bad Request: sticker set name is already occupied")
+
+        self.assertTrue(self.service._is_pack_name_occupied(error))
+
+    def test_rate_limit_message_includes_retry_after(self):
+        error = api_error(
+            "Too Many Requests: retry after 17",
+            error_code=429,
+            parameters={"retry_after": 17},
+        )
+
+        translated = self.service._translate_api_error(error)
+
+        self.assertIn("17", str(translated))
+
+    def test_occupied_full_pack_recovery_advances_to_next_part(self):
+        first_name = self.service.build_pack_name(123, 1)
+        self.bot.sets[first_name] = SimpleNamespace(
+            name=first_name,
+            stickers=[
+                SimpleNamespace(file_id=f"f-{index}", file_unique_id=f"u-{index}")
+                for index in range(PACK_CAPACITY)
+            ],
+        )
+        self.bot.unique_ids["next"] = "next-unique"
+        source = pending("next", "next-unique", "animated")
+
+        result = self.service._create_pack(
+            source,
+            "Fazbear",
+            self.service._to_input_sticker(source),
+            1,
+        )
+
+        self.assertEqual(AddStatus.CREATED, result.status)
+        self.assertEqual(2, result.part_number)
 
 
 if __name__ == "__main__":

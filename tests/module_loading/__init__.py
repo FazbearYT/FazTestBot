@@ -1,0 +1,1 @@
+"""Module loading integration tests."""

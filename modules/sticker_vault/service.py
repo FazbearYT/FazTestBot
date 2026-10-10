@@ -173,6 +173,13 @@ class StickerVaultService:
                                 sticker=input_sticker,
                             )
                         except ApiTelegramException as add_exc:
+                            if self._is_pack_full(add_exc):
+                                return self._create_pack(
+                                    sticker,
+                                    user_display_name,
+                                    input_sticker,
+                                    next_part + 1,
+                                )
                             raise self._translate_api_error(add_exc) from add_exc
                         count = len(recovered.stickers) + 1
                         self.repository.upsert_pack(
@@ -184,6 +191,12 @@ class StickerVaultService:
                             )
                         )
                         return AddResult(AddStatus.ADDED, pack_name, next_part, count)
+                    return self._create_pack(
+                        sticker,
+                        user_display_name,
+                        input_sticker,
+                        next_part + 1,
+                    )
             raise self._translate_api_error(exc) from exc
 
         record = StickerPackRecord(sticker.user_id, next_part, pack_name, 1)
@@ -192,17 +205,29 @@ class StickerVaultService:
 
     def _load_remote_packs(self, user_id: int) -> list[_RemotePack]:
         records = self.repository.list_packs(user_id)
+        records_by_part = {record.part_number: record for record in records}
+        highest_recorded_part = max(records_by_part, default=0)
         remote_packs: list[_RemotePack] = []
 
-        if not records:
-            records = [
-                StickerPackRecord(user_id, 1, self.build_pack_name(user_id, 1), 0)
-            ]
-
-        for record in records:
+        # Pack names are deterministic, so the Telegram state can rebuild a lost
+        # or partially written local index. Probe until the first missing part
+        # beyond the highest DB record; this also makes duplicate detection cover
+        # every recovered part.
+        part_number = 1
+        while part_number <= MAX_PACK_PARTS:
+            record = records_by_part.get(part_number) or StickerPackRecord(
+                user_id,
+                part_number,
+                self.build_pack_name(user_id, part_number),
+                0,
+            )
             sticker_set = self._get_sticker_set(record.pack_name)
             if sticker_set is None:
-                self.repository.remove_pack(user_id, record.part_number)
+                if part_number in records_by_part:
+                    self.repository.remove_pack(user_id, part_number)
+                if part_number > highest_recorded_part:
+                    break
+                part_number += 1
                 continue
             refreshed = StickerPackRecord(
                 user_id=user_id,
@@ -212,19 +237,7 @@ class StickerVaultService:
             )
             self.repository.upsert_pack(refreshed)
             remote_packs.append(_RemotePack(refreshed, sticker_set))
-
-        if remote_packs and all(
-            len(pack.sticker_set.stickers) >= PACK_CAPACITY for pack in remote_packs
-        ):
-            next_part = max(pack.record.part_number for pack in remote_packs) + 1
-            candidate_name = self.build_pack_name(user_id, next_part)
-            candidate = self._get_sticker_set(candidate_name)
-            if candidate is not None:
-                record = StickerPackRecord(
-                    user_id, next_part, candidate_name, len(candidate.stickers)
-                )
-                self.repository.upsert_pack(record)
-                remote_packs.append(_RemotePack(record, candidate))
+            part_number += 1
 
         return remote_packs
 
@@ -298,7 +311,10 @@ class StickerVaultService:
 
     @classmethod
     def _is_pack_name_occupied(cls, exc: ApiTelegramException) -> bool:
-        return "PACK_SHORT_NAME_OCCUPIED" in cls._api_description(exc)
+        description = cls._api_description(exc)
+        return "PACK_SHORT_NAME_OCCUPIED" in description or (
+            "STICKER SET NAME" in description and "ALREADY OCCUPIED" in description
+        )
 
     @classmethod
     def _is_pack_full(cls, exc: ApiTelegramException) -> bool:
@@ -311,6 +327,16 @@ class StickerVaultService:
     def _translate_api_error(cls, exc: ApiTelegramException) -> StickerVaultError:
         description = cls._api_description(exc)
         logger.warning("Telegram Sticker API error: %s", description)
+        result_json = getattr(exc, "result_json", None) or {}
+        if result_json.get("error_code") == 429:
+            retry_after = (result_json.get("parameters") or {}).get("retry_after")
+            if isinstance(retry_after, int) and retry_after > 0:
+                return StickerVaultError(
+                    f"Слишком много запросов к Telegram. Повторите через {retry_after} сек."
+                )
+            return StickerVaultError(
+                "Слишком много запросов к Telegram. Повторите немного позже."
+            )
         if "USER_ID_INVALID" in description:
             return StickerVaultError(
                 "Сначала откройте личный чат с ботом и отправьте /start."

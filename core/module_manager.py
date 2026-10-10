@@ -111,7 +111,12 @@ class ModuleManager:
                 try:
                     module_instance.on_load(bot)
                 except Exception as e:
+                    # A module that failed its startup hook must not remain
+                    # visible or receive callbacks in a partially loaded state.
+                    self.modules.pop(module_instance.id, None)
+                    self.callback_map.pop(module_instance.callback_prefix, None)
                     self._log_error(module_name, f"Ошибка on_load: {str(e)}")
+                    return False
 
             print(f"✅ Модуль загружен: {module_instance.icon} {module_instance.name} v{module_instance.version}")
             return True

@@ -63,6 +63,9 @@ class StickerVaultModule(BaseModule):
         )
 
     def handle_entry(self, bot: Any, call: Any) -> None:
+        if not self._is_private_call(call):
+            self._show_private_only(bot, call)
+            return
         self._ensure_storage()
         self._show_menu(
             bot, call.message.chat.id, call.message.message_id, call.from_user.id
@@ -71,6 +74,9 @@ class StickerVaultModule(BaseModule):
     def handle_callback(self, bot: Any, call: Any) -> None:
         self._ensure_storage()
         if call.data == "sv_refresh":
+            if not self._is_private_call(call):
+                self._show_private_only(bot, call)
+                return
             self._show_menu(
                 bot, call.message.chat.id, call.message.message_id, call.from_user.id
             )
@@ -201,12 +207,20 @@ class StickerVaultModule(BaseModule):
         try:
             result = self.service.add(sticker, display_name)
         except StickerVaultError as exc:
-            self._safe_edit(bot, call, f"⚠️ {escape(str(exc))}")
+            self._safe_edit(
+                bot,
+                call,
+                f"⚠️ {escape(str(exc))}",
+                self._retry_keyboard(sticker),
+            )
             return
         except Exception:
             logger.exception("Unexpected Sticker Vault add failure")
             self._safe_edit(
-                bot, call, "⚠️ Не удалось сохранить стикер. Попробуйте позже."
+                bot,
+                call,
+                "⚠️ Не удалось сохранить стикер. Попробуйте позже.",
+                self._retry_keyboard(sticker),
             )
             return
 
@@ -235,7 +249,10 @@ class StickerVaultModule(BaseModule):
         except Exception:
             logger.exception("Unexpected Sticker Vault download failure")
             self._safe_edit(
-                bot, call, "⚠️ Не удалось скачать файл стикера. Попробуйте позже."
+                bot,
+                call,
+                "⚠️ Не удалось скачать файл стикера. Попробуйте позже.",
+                self._retry_keyboard(sticker),
             )
             return
         self._safe_edit(
@@ -247,6 +264,26 @@ class StickerVaultModule(BaseModule):
             self.repository = StickerVaultRepository(config.DATABASE_PATH)
         if self.user_database is None:
             self.user_database = DatabaseManager()
+
+    def _retry_keyboard(self, sticker: PendingSticker) -> types.InlineKeyboardMarkup:
+        return sticker_actions_keyboard(self.pending_store.put(sticker))
+
+    @staticmethod
+    def _is_private_call(call: Any) -> bool:
+        return getattr(call.message.chat, "type", None) == "private"
+
+    @staticmethod
+    def _show_private_only(bot: Any, call: Any) -> None:
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=(
+                "🔒 <b>Sticker Vault доступен только в личном чате.</b>\n\n"
+                "Откройте диалог с ботом и отправьте ему стикер."
+            ),
+            reply_markup=back_to_modules_keyboard(),
+            parse_mode="HTML",
+        )
 
     @staticmethod
     def _parse_action(callback_data: str) -> tuple[str | None, str]:

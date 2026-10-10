@@ -7,6 +7,7 @@ from modules.sticker_vault.config import PENDING_ACTION_CACHE_SIZE
 from modules.sticker_vault.module import StickerVaultModule
 from modules.sticker_vault.pending import PendingStickerStore
 from modules.sticker_vault.repository import StickerVaultRepository
+from modules.sticker_vault.service import StickerVaultError
 
 
 class FakeUserDatabase:
@@ -44,6 +45,11 @@ class FakeBot:
 
     def get_me(self):
         return SimpleNamespace(username="Faz_Test_Bot")
+
+
+class FailingService:
+    def add(self, sticker, display_name):
+        raise StickerVaultError("Повторите через 17 сек.")
 
 
 def message(sticker, chat_type="private"):
@@ -157,6 +163,49 @@ class StickerVaultModuleTests(unittest.TestCase):
         self.module.handle_callback(self.bot, own_call)
         self.module.handle_callback(self.bot, own_call)
         self.assertIn("устарело", self.bot.edits[-1]["text"])
+
+    def test_retryable_add_failure_gets_a_fresh_action_token(self):
+        self.module._handle_sticker_message(message(sticker()), self.bot)
+        old_callback = (
+            self.bot.replies[-1][2]["reply_markup"].keyboard[0][0].callback_data
+        )
+        self.module.service = FailingService()
+        call = SimpleNamespace(
+            data=old_callback,
+            from_user=message(sticker()).from_user,
+            message=SimpleNamespace(chat=SimpleNamespace(id=321), message_id=99),
+        )
+
+        self.module.handle_callback(self.bot, call)
+
+        edit = self.bot.edits[-1]
+        self.assertIn("17", edit["text"])
+        new_callback = edit["reply_markup"].keyboard[0][0].callback_data
+        self.assertNotEqual(old_callback, new_callback)
+
+    def test_group_entry_does_not_read_or_expose_personal_packs(self):
+        class RepositoryThatMustNotBeRead:
+            def list_packs(self, user_id):
+                raise AssertionError("personal repository was read from a group")
+
+        self.module.repository = RepositoryThatMustNotBeRead()
+        call = SimpleNamespace(
+            data="module_sticker_vault",
+            from_user=message(sticker()).from_user,
+            message=SimpleNamespace(
+                chat=SimpleNamespace(id=-100123, type="supergroup"), message_id=99
+            ),
+        )
+
+        self.module.handle_entry(self.bot, call)
+
+        self.assertIn("только в личном чате", self.bot.edits[-1]["text"])
+        buttons = [
+            button
+            for row in self.bot.edits[-1]["reply_markup"].keyboard
+            for button in row
+        ]
+        self.assertTrue(all(button.url is None for button in buttons))
 
 
 if __name__ == "__main__":
