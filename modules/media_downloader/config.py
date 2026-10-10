@@ -7,12 +7,12 @@ ENABLED = True  # ✅ МОДУЛЬ ВКЛЮЧЁН
 #====== ПУТИ ======
 # Временная папка модуля для загрузок
 MODULE_TEMP_DIR = TEMP_DIR / "media_downloader"
-MODULE_TEMP_DIR.mkdir(exist_ok=True)
+MODULE_TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # Путь к FFmpeg (предполагается, что он лежит в assets/ffmpeg/bin/)
 ASSETS_DIR = ROOT_DIR / "assets"
 FFMPEG_DIR = ASSETS_DIR / "ffmpeg" / "bin"
-FFMPEG_DIR.mkdir(exist_ok=True)
+FFMPEG_DIR.mkdir(parents=True, exist_ok=True)
 
 FFMPEG_PATH = FFMPEG_DIR / ("ffmpeg.exe" if os.name == 'nt' else 'ffmpeg')
 FFPROBE_PATH = FFMPEG_DIR / ("ffprobe.exe" if os.name == 'nt' else 'ffprobe')
