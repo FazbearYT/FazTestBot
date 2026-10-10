@@ -53,7 +53,9 @@ class BackupManager:
                 return False, f"❌ База данных заблокирована: {str(e)}"
 
             # Генерируем имя файла бэкапа
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Microseconds prevent a safety backup created during restore from
+            # overwriting the selected backup in the same second.
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_type = "manual" if manual else "auto"
             backup_filename = f"users_{backup_type}_{timestamp}.db"
             backup_path = os.path.join(self.backup_dir, backup_filename)

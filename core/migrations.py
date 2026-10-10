@@ -134,7 +134,7 @@ class DatabaseMigrator:
         # Получаем последнюю применённую миграцию
         cursor.execute("""
             SELECT version FROM migrations 
-            ORDER BY applied_at DESC 
+            ORDER BY id DESC
             LIMIT 1
         """)
 
