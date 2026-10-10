@@ -37,6 +37,7 @@ def main() -> int:
         "check",
         "core/module_manager.py",
         "core/settings.py",
+        "bot.py",
         "config.py",
         "scripts/doctor.py",
         "scripts/ci",
