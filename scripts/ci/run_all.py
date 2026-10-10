@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +13,10 @@ from scripts.ci.contract import discover_modules
 
 def run(*args: str) -> None:
     print("+", " ".join(args), flush=True)
-    subprocess.run(args, check=True)
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    subprocess.run(args, check=True, env=env)
 
 
 def main() -> int:
