@@ -82,7 +82,7 @@ def render_modules(dashboard: AdminDashboard) -> str:
         for metric in module.metrics:
             lines.append(f"• {escape(metric.label)}: {escape(str(metric.value))}")
         lines.append("")
-    return "\n".join(lines).rstrip()
+    return _bounded("\n".join(lines).rstrip())
 
 
 def render_health(dashboard: AdminDashboard) -> str:
@@ -92,13 +92,116 @@ def render_health(dashboard: AdminDashboard) -> str:
         lines.append(
             f"{icons.get(check.status, '•')} <b>{escape(check.name)}</b>: {escape(check.summary)}"
         )
-    return "\n".join(lines)
+    return _bounded("\n".join(lines))
+
+
+def _bounded(text: str, limit: int = 3900) -> str:
+    if len(text) <= limit:
+        return text
+    cutoff = text.rfind("\n", 0, limit - 20)
+    if cutoff <= 0:
+        cutoff = limit - 20
+    return text[:cutoff].rstrip() + "\n\n<i>… сокращено</i>"
+
+
+def _safe(value: Any, limit: int = 500) -> str:
+    text = str(value)
+    if len(text) > limit:
+        text = text[: limit - 1] + "…"
+    return escape(text)
+
+
+def render_user_profile(user_id: int, profile: dict[str, Any]) -> str:
+    lines = [
+        f"👤 <b>Профиль пользователя</b> (ID: {user_id})",
+        "",
+        f"Имя: {_safe(profile['full_name'])}",
+        f"Юзернейм: @{_safe(profile['username'])}",
+        f"Первое взаимодействие: {_safe(profile['created_at'])}",
+        f"Последняя активность: {_safe(profile['last_active'])}",
+        "",
+        "<b>Статистика модулей:</b>",
+    ]
+    for module, count in profile["module_stats"].items():
+        lines.append(f"• {_safe(module)}: {count} операций")
+    lines.extend(["", "<b>Последние операции:</b>"])
+    names = {"morze": "Морзе", "numbers": "Числа", "caesar": "Цезарь", "qr": "QR"}
+    for index, operation in enumerate(profile["last_operations"], 1):
+        timestamp = str(operation["timestamp"])
+        parts = timestamp.split()
+        time_text = parts[1][:5] if len(parts) > 1 else timestamp
+        cipher = names.get(operation["cipher_type"], str(operation["cipher_type"]))
+        lines.append(f"{index}. [{escape(time_text)}] {escape(cipher)}:")
+        lines.append(
+            f"   «{_safe(operation['original_text'])}» → «{_safe(operation['encrypted_text'])}»"
+        )
+    return _bounded("\n".join(lines))
+
+
+def render_search_results(query: str, results: list[dict[str, Any]]) -> str:
+    safe_query = _safe(query)
+    if not results:
+        return f"⚠️ По запросу «{safe_query}» ничего не найдено."
+    lines = [
+        f"🔍 <b>Результаты поиска</b> по «{safe_query}»",
+        "",
+        f"Найдено операций: {len(results)}",
+        "",
+    ]
+    names = {"morze": "Морзе", "numbers": "Числа", "caesar": "Цезарь", "qr": "QR"}
+    for index, operation in enumerate(results[:10], 1):
+        timestamp = str(operation["timestamp"])
+        parts = timestamp.split()
+        stamp = " ".join(parts[:2]) if len(parts) > 1 else timestamp
+        cipher = names.get(operation["cipher_type"], str(operation["cipher_type"]))
+        lines.extend(
+            [
+                f"{index}. [{escape(stamp)}] ID {operation['user_id']} | {escape(cipher)}",
+                f"   Исходный: «{_safe(operation['original_text'])}»",
+                f"   Результат: «{_safe(operation['encrypted_text'])}»",
+                "",
+            ]
+        )
+    if len(results) > 10:
+        lines.append(f"<i>… и ещё {len(results) - 10} операций</i>")
+    return _bounded("\n".join(lines))
+
+
+def render_backup_overview(settings: Settings) -> str:
+    enabled = "включены" if settings.backup_enabled else "отключены"
+    return (
+        "🗄️ <b>Админ-панель — Бэкапы</b>\n\n"
+        "Управление резервными копиями базы данных:\n"
+        f"• Автоматические бэкапы: {enabled}\n"
+        f"• Время запуска: {_safe(settings.backup_time)}\n"
+        f"• Хранение: до {settings.backup_retention_count} копий / "
+        f"{settings.backup_retention_days} дней\n"
+        "• Ручное создание по необходимости\n\n"
+        "Выберите действие:"
+    )
+
+
+def render_restore_instructions(filename: str) -> str:
+    return (
+        "🗄️ <b>Восстановление базы данных</b>\n\n"
+        "Онлайн-восстановление отключено: замена рабочей БД во время работы бота "
+        "может привести к несогласованному состоянию.\n\n"
+        "Остановите бот и выполните восстановление операторским CLI для файла:\n"
+        f"<code>{_safe(filename)}</code>\n\n"
+        "Команда: <code>python -m scripts.database restore --backup-file "
+        f"{_safe(filename)}</code>\n\n"
+        "После восстановления выполните проверку БД и только затем запустите бот."
+    )
 
 
 __all__ = [
     "AdminDashboard",
     "AdminPanelService",
     "render_health",
+    "render_backup_overview",
     "render_modules",
     "render_overview",
+    "render_restore_instructions",
+    "render_search_results",
+    "render_user_profile",
 ]

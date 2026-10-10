@@ -5,7 +5,9 @@ from contextlib import closing, redirect_stdout
 from io import StringIO
 from pathlib import Path
 
-from scripts.database import _check
+from core.backup import BackupManager
+from core.migrations import DatabaseMigrator
+from scripts.database import _check, _restore
 
 
 class DatabaseCliTests(unittest.TestCase):
@@ -37,3 +39,27 @@ class DatabaseCliTests(unittest.TestCase):
                 result = _check(path)
 
         self.assertEqual(1, result)
+
+    def test_restore_replaces_database_and_runs_integrity_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "users.db"
+            backups = root / "backups"
+            DatabaseMigrator(path).apply_migrations()
+            manager = BackupManager(backup_dir=backups, db_path=path)
+            with manager.database.connection(write=True) as connection:
+                connection.execute("INSERT INTO users (user_id) VALUES (1)")
+            created, _ = manager.create_backup(manual=True)
+            self.assertTrue(created)
+            filename = manager.get_backup_list()[0]["filename"]
+            with manager.database.connection(write=True) as connection:
+                connection.execute("INSERT INTO users (user_id) VALUES (2)")
+
+            with redirect_stdout(StringIO()) as output:
+                result = _restore(path, backups, filename)
+            with manager.database.connection() as connection:
+                user_ids = [row[0] for row in connection.execute("SELECT user_id FROM users")]
+
+        self.assertEqual(0, result)
+        self.assertEqual([1], user_ids)
+        self.assertIn("Database integrity: ok", output.getvalue())

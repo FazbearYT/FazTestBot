@@ -10,7 +10,7 @@ def main_menu_keyboard():
     kb.add(
         types.InlineKeyboardButton("📦 Модули", callback_data="menu_modules"),
         types.InlineKeyboardButton("❓ Помощь", callback_data="menu_help"),
-        types.InlineKeyboardButton("ℹ️ О боте", callback_data="menu_about")
+        types.InlineKeyboardButton("ℹ️ О боте", callback_data="menu_about"),
     )
     return kb
 
@@ -27,15 +27,12 @@ def modules_menu_keyboard(modules):
     for module in modules:
         kb.add(
             types.InlineKeyboardButton(
-                f"{module.icon} {module.name}",
-                callback_data=f"module_{module.id}"
+                f"{module.icon} {module.name}", callback_data=f"module_{module.id}"
             )
         )
 
     # Кнопка возврата
-    kb.add(
-        types.InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")
-    )
+    kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="back_to_main"))
 
     return kb
 
@@ -43,18 +40,14 @@ def modules_menu_keyboard(modules):
 def back_to_modules_keyboard():
     """Клавиатура для возврата к списку модулей"""
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        types.InlineKeyboardButton("🔙 К списку модулей", callback_data="back_to_modules")
-    )
+    kb.add(types.InlineKeyboardButton("🔙 К списку модулей", callback_data="back_to_modules"))
     return kb
 
 
 def back_to_main_keyboard():
     """Клавиатура для возврата в главное меню"""
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        types.InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")
-    )
+    kb.add(types.InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main"))
     return kb
 
 
@@ -63,7 +56,7 @@ def stats_navigation_keyboard():
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("🔄 Обновить", callback_data="admin_stats_refresh"),
-        types.InlineKeyboardButton("🏠 В меню", callback_data="admin_back_to_menu")
+        types.InlineKeyboardButton("🏠 В меню", callback_data="admin_back_to_menu"),
     )
     return kb
 
@@ -94,7 +87,7 @@ def admin_menu_keyboard():
         types.InlineKeyboardButton("⚙️ Настройки", callback_data="admin_settings"),
         types.InlineKeyboardButton("🗄️ Бэкапы", callback_data="admin_backups"),  # НОВОЕ
         types.InlineKeyboardButton("🚨 Экстренно", callback_data="admin_emergency"),
-        types.InlineKeyboardButton("🚪 Выход", callback_data="admin_exit")
+        types.InlineKeyboardButton("🚪 Выход", callback_data="admin_exit"),
     )
     return kb
 
@@ -102,18 +95,16 @@ def admin_menu_keyboard():
 def user_search_keyboard():
     """Клавиатура для поиска пользователя с отменой"""
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        types.InlineKeyboardButton("❌ Отмена поиска", callback_data="admin_cancel_search")
-    )
+    kb.add(types.InlineKeyboardButton("❌ Отмена поиска", callback_data="admin_cancel_search"))
     return kb
 
 
-def emergency_confirm_keyboard():
-    """Клавиатура подтверждения экстренных действий"""
+def destructive_confirm_keyboard(token, label="✅ Подтвердить"):
+    """Клавиатура одноразового подтверждения опасного действия."""
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
-        types.InlineKeyboardButton("✅ Да, очистить ВСЁ", callback_data="admin_emergency_confirm"),
-        types.InlineKeyboardButton("❌ Отмена", callback_data="admin_back_to_menu")
+        types.InlineKeyboardButton(label, callback_data=f"admin_confirm_{token}"),
+        types.InlineKeyboardButton("❌ Отмена", callback_data="admin_back_to_menu"),
     )
     return kb
 
@@ -125,7 +116,7 @@ def cleanup_keyboard():
         types.InlineKeyboardButton("🧹 7 дней", callback_data="admin_cleanup_7"),
         types.InlineKeyboardButton("🧹 30 дней", callback_data="admin_cleanup_30"),
         types.InlineKeyboardButton("🧹 90 дней", callback_data="admin_cleanup_90"),
-        types.InlineKeyboardButton("🔙 Назад", callback_data="admin_back_to_menu")
+        types.InlineKeyboardButton("🔙 Назад", callback_data="admin_back_to_menu"),
     )
     return kb
 
@@ -136,7 +127,7 @@ def export_keyboard():
     kb.add(
         types.InlineKeyboardButton("📄 CSV", callback_data="admin_export_csv"),
         types.InlineKeyboardButton("🧾 JSON", callback_data="admin_export_json"),
-        types.InlineKeyboardButton("🔙 Назад", callback_data="admin_back_to_menu")
+        types.InlineKeyboardButton("🔙 Назад", callback_data="admin_back_to_menu"),
     )
     return kb
 
@@ -146,12 +137,13 @@ def easter_egg_keyboard():
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton("📜 История разработки", callback_data="easter_history"),
-        types.InlineKeyboardButton("🔙 Закрыть", callback_data="easter_close")
+        types.InlineKeyboardButton("🔙 Закрыть", callback_data="easter_close"),
     )
     return kb
 
 
 # ====== НОВЫЕ КЛАВИАТУРЫ ДЛЯ ВЕРСИИ 3.6 ======
+
 
 def backup_menu_keyboard():
     """Клавиатура меню бэкапов"""
@@ -160,7 +152,7 @@ def backup_menu_keyboard():
         types.InlineKeyboardButton("💾 Создать бэкап", callback_data="admin_backup_create"),
         types.InlineKeyboardButton("📋 Список бэкапов", callback_data="admin_backup_list"),
         types.InlineKeyboardButton("📊 Статистика", callback_data="admin_backup_stats"),
-        types.InlineKeyboardButton("🔙 Назад", callback_data="admin_back_to_menu")
+        types.InlineKeyboardButton("🔙 Назад", callback_data="admin_back_to_menu"),
     )
     return kb
 
@@ -178,13 +170,11 @@ def backup_list_keyboard(backup_files):
         kb.add(
             types.InlineKeyboardButton(
                 f"📁 {backup['filename']} ({backup['size_formatted']})",
-                callback_data=f"admin_backup_info_{backup['filename']}"
+                callback_data=f"admin_backup_info_{backup['filename']}",
             )
         )
 
-    kb.add(
-        types.InlineKeyboardButton("🔙 Назад", callback_data="admin_backups")
-    )
+    kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="admin_backups"))
 
     return kb
 
@@ -197,8 +187,10 @@ def backup_info_keyboard(filename):
     """
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
-        types.InlineKeyboardButton("⬇️ Восстановить", callback_data=f"admin_backup_restore_{filename}"),
+        types.InlineKeyboardButton(
+            "ℹ️ Как восстановить", callback_data=f"admin_backup_restore_{filename}"
+        ),
         types.InlineKeyboardButton("🗑️ Удалить", callback_data=f"admin_backup_delete_{filename}"),
-        types.InlineKeyboardButton("🔙 Назад", callback_data="admin_backup_list")
+        types.InlineKeyboardButton("🔙 Назад", callback_data="admin_backup_list"),
     )
     return kb

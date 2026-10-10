@@ -3,9 +3,13 @@ from unittest.mock import Mock
 
 from core.admin_panel import (
     AdminPanelService,
+    render_backup_overview,
     render_health,
     render_modules,
     render_overview,
+    render_restore_instructions,
+    render_search_results,
+    render_user_profile,
 )
 from core.health import HealthCheck, HealthReport
 from core.module_base import BaseModule, ModuleAdminSnapshot
@@ -92,6 +96,70 @@ class AdminPanelTests(unittest.TestCase):
         self.assertFalse(hasattr(snapshot, "state"))
         self.assertEqual(1, snapshot.active_state_count)
         self.assertEqual("sample", snapshot.module_id)
+
+    def test_profile_and_search_renderers_escape_dynamic_html(self):
+        profile = {
+            "full_name": "<b>owner</b>",
+            "username": "name&more",
+            "created_at": "2026-01-01 10:00:00",
+            "last_active": "2026-01-02 10:00:00",
+            "module_stats": {"<module>": 1},
+            "last_operations": [
+                {
+                    "cipher_type": "<cipher>",
+                    "original_text": "<secret>",
+                    "encrypted_text": "a&b",
+                    "timestamp": "2026-01-02 10:00:00",
+                }
+            ],
+        }
+        results = [
+            {
+                "user_id": 5,
+                "cipher_type": "<cipher>",
+                "original_text": "<original>",
+                "encrypted_text": "a&b",
+                "timestamp": "2026-01-02 10:00:00",
+            }
+        ]
+
+        profile_text = render_user_profile(5, profile)
+        search_text = render_search_results("<query>", results)
+
+        self.assertNotIn("<secret>", profile_text)
+        self.assertIn("&lt;secret&gt;", profile_text)
+        self.assertIn("&lt;query&gt;", search_text)
+        self.assertIn("a&amp;b", search_text)
+
+    def test_rendered_search_is_bounded_for_telegram(self):
+        results = [
+            {
+                "user_id": index,
+                "cipher_type": "cipher",
+                "original_text": "x" * 1000,
+                "encrypted_text": "y" * 1000,
+                "timestamp": "2026-01-02 10:00:00",
+            }
+            for index in range(20)
+        ]
+
+        self.assertLessEqual(len(render_search_results("query", results)), 3900)
+
+    def test_backup_views_use_settings_and_disable_online_restore(self):
+        settings = Settings(
+            backup_enabled=False,
+            backup_time="04:30",
+            backup_retention_count=9,
+            backup_retention_days=45,
+        )
+
+        overview = render_backup_overview(settings)
+        restore = render_restore_instructions("users_manual_<unsafe>.db")
+
+        self.assertIn("04:30", overview)
+        self.assertIn("до 9 копий / 45 дней", overview)
+        self.assertIn("Онлайн-восстановление отключено", restore)
+        self.assertIn("users_manual_&lt;unsafe&gt;.db", restore)
 
 
 if __name__ == "__main__":
