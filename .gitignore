@@ -64,10 +64,8 @@ Thumbs.db
 tmp/
 *.tmp
 
-# Test files
-tests/
-test_*.py
-*_test.py
+# Test artifacts
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/

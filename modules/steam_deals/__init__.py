@@ -10,7 +10,7 @@ steam_deals_module = SteamDealsModule(
     name="Steam Deals Tracker",
     description="Отслеживание скидок на игры в Steam",
     icon="🎮",
-    version="1.0.0",
+    version="1.0.2",
     callback_prefix="steam_"
 )
 
