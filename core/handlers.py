@@ -6,7 +6,10 @@ import config
 from core.admin import admin_manager
 from core.admin_panel import (
     AdminPanelService,
+    render_backup_info,
     render_backup_overview,
+    render_backup_result,
+    render_backup_stats,
     render_health,
     render_modules,
     render_overview,
@@ -153,7 +156,6 @@ def register_global_handlers(bot):
                 reply_markup=main_menu_keyboard(),
                 parse_mode="HTML"
             )
-            admin_mgr.log_admin_action(message.from_user.id, "auth_by_code", None)
         else:
             bot.send_message(
                 message.chat.id,
@@ -578,17 +580,14 @@ def register_global_handlers(bot):
                         parse_mode="HTML",
                     )
                 elif confirmation.action == "delete_backup":
-                    success, result_message = backup_manager.delete_backup(
+                    _success, result_message = backup_manager.delete_backup(
                         confirmation.payload
                     )
                     backup_files = backup_manager.get_backup_list()
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=(
-                            "🗄️ <b>Админ-панель — Бэкапы</b>\n\n"
-                            f"{result_message}\n\nНайдено бэкапов: {len(backup_files)}"
-                        ),
+                        text=render_backup_result(result_message, len(backup_files)),
                         reply_markup=(
                             backup_list_keyboard(backup_files)
                             if backup_files
@@ -737,12 +736,12 @@ def register_global_handlers(bot):
             # Создание бэкапа
             elif call.data == "admin_backup_create":
                 bot.answer_callback_query(call.id, "⏳ Создание бэкапа...")
-                success, message = backup_manager.create_backup(manual=True)
+                _success, message = backup_manager.create_backup(manual=True)
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"🗄️ <b>Админ-панель — Бэкапы</b>\n\n{message}",
+                    text=render_backup_result(message),
                     reply_markup=backup_menu_keyboard(),
                     parse_mode="HTML"
                 )
@@ -776,18 +775,10 @@ def register_global_handlers(bot):
             elif call.data == "admin_backup_stats":
                 stats = backup_manager.get_backup_stats()
 
-                text = "🗄️ <b>Админ-панель — Статистика бэкапов</b>\n\n"
-                text += f"📊 Всего бэкапов: {stats['total_count']}\n"
-                text += f"🤖 Автоматических: {stats['auto_count']}\n"
-                text += f"👤 Ручных: {stats['manual_count']}\n"
-                text += f"💾 Общий размер: {stats['total_size_formatted']}\n"
-                text += f"📅 Последний: {stats['newest']}\n"
-                text += f"📅 Старейший: {stats['oldest']}\n"
-
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=text,
+                    text=render_backup_stats(stats),
                     reply_markup=backup_menu_keyboard(),
                     parse_mode="HTML"
                 )
@@ -800,17 +791,10 @@ def register_global_handlers(bot):
                 backup = next((b for b in backup_files if b['filename'] == filename), None)
 
                 if backup:
-                    text = "🗄️ <b>Информация о бэкапе</b>\n\n"
-                    text += f"📁 Файл: {backup['filename']}\n"
-                    text += f"📊 Размер: {backup['size_formatted']}\n"
-                    text += f"🕐 Создан: {backup['created'].strftime('%d.%m.%Y %H:%M')}\n"
-                    text += f"🏷️ Тип: {backup['type']}\n\n"
-                    text += "Выберите действие:"
-
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=text,
+                        text=render_backup_info(backup),
                         reply_markup=backup_info_keyboard(filename),
                         parse_mode="HTML"
                     )
@@ -1118,6 +1102,19 @@ def register_global_handlers(bot):
         if easter_egg_manager.check_blocked_user(message.from_user.id):
             return  # Полностью игнорируем заблокированного пользователя
 
+        # Pending admin input is authorized before recording any activity.
+        admin_state = user_input_state.peek(message.from_user.id, message.chat.id)
+        if admin_state is not None:
+            if not has_admin_access(message, admin_mgr):
+                user_input_state.clear(message.from_user.id)
+                return
+            if admin_state.mode == "search_user":
+                handle_user_search_input(message, bot)
+                return
+            if admin_state.mode == "search_logs":
+                handle_search_input(message, bot)
+                return
+
         # Логируем пользователя
         db.create_or_update_user(
             user_id=message.from_user.id,
@@ -1125,18 +1122,6 @@ def register_global_handlers(bot):
             first_name=message.from_user.first_name,
             last_name=message.from_user.last_name
         )
-
-        # Проверяем, находится ли пользователь в режиме поиска
-        admin_state = user_input_state.peek(message.from_user.id, message.chat.id)
-        if admin_state is not None:
-            mode = admin_state.mode
-
-            if mode == 'search_user':
-                handle_user_search_input(message, bot)
-                return
-            elif mode == 'search_logs':
-                handle_search_input(message, bot)
-                return
 
         # Проверяем на пасхалку-головоломку
         easter_result = easter_egg_manager.process_easter_egg_message(

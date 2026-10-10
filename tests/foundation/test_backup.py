@@ -75,6 +75,12 @@ class BackupManagerCharacterizationTests(unittest.TestCase):
         self.assertFalse(success)
         self.assertIn("Неверный формат", message)
 
+    def test_backup_list_excludes_unmanaged_database_files(self):
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
+        (self.backup_dir / "users_foreign.db").write_bytes(b"not managed")
+
+        self.assertEqual([], self.manager.get_backup_list())
+
     def test_rejects_path_traversal(self):
         success, message = self.manager.restore_backup("users_/../../outside.db")
 

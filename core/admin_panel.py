@@ -123,7 +123,7 @@ def render_user_profile(user_id: int, profile: dict[str, Any]) -> str:
         "<b>Статистика модулей:</b>",
     ]
     for module, count in profile["module_stats"].items():
-        lines.append(f"• {_safe(module)}: {count} операций")
+        lines.append(f"• {_safe(module)}: {_safe(count)} операций")
     lines.extend(["", "<b>Последние операции:</b>"])
     names = {"morze": "Морзе", "numbers": "Числа", "caesar": "Цезарь", "qr": "QR"}
     for index, operation in enumerate(profile["last_operations"], 1):
@@ -156,7 +156,7 @@ def render_search_results(query: str, results: list[dict[str, Any]]) -> str:
         cipher = names.get(operation["cipher_type"], str(operation["cipher_type"]))
         lines.extend(
             [
-                f"{index}. [{escape(stamp)}] ID {operation['user_id']} | {escape(cipher)}",
+                f"{index}. [{escape(stamp)}] ID {_safe(operation['user_id'])} | {escape(cipher)}",
                 f"   Исходный: «{_safe(operation['original_text'])}»",
                 f"   Результат: «{_safe(operation['encrypted_text'])}»",
                 "",
@@ -181,6 +181,35 @@ def render_backup_overview(settings: Settings) -> str:
     )
 
 
+def render_backup_result(message: str, backup_count: int | None = None) -> str:
+    suffix = "" if backup_count is None else f"\n\nНайдено бэкапов: {_safe(backup_count)}"
+    return f"🗄️ <b>Админ-панель — Бэкапы</b>\n\n{_safe(message, 2000)}{suffix}"
+
+
+def render_backup_stats(stats: dict[str, Any]) -> str:
+    return (
+        "🗄️ <b>Админ-панель — Статистика бэкапов</b>\n\n"
+        f"📊 Всего бэкапов: {_safe(stats['total_count'])}\n"
+        f"🤖 Автоматических: {_safe(stats['auto_count'])}\n"
+        f"👤 Ручных: {_safe(stats['manual_count'])}\n"
+        f"💾 Общий размер: {_safe(stats['total_size_formatted'])}\n"
+        f"📅 Последний: {_safe(stats['newest'])}\n"
+        f"📅 Старейший: {_safe(stats['oldest'])}"
+    )
+
+
+def render_backup_info(backup: dict[str, Any]) -> str:
+    created = backup["created"].strftime("%d.%m.%Y %H:%M")
+    return (
+        "🗄️ <b>Информация о бэкапе</b>\n\n"
+        f"📁 Файл: {_safe(backup['filename'])}\n"
+        f"📊 Размер: {_safe(backup['size_formatted'])}\n"
+        f"🕐 Создан: {_safe(created)}\n"
+        f"🏷️ Тип: {_safe(backup['type'])}\n\n"
+        "Выберите действие:"
+    )
+
+
 def render_restore_instructions(filename: str) -> str:
     return (
         "🗄️ <b>Восстановление базы данных</b>\n\n"
@@ -197,8 +226,11 @@ def render_restore_instructions(filename: str) -> str:
 __all__ = [
     "AdminDashboard",
     "AdminPanelService",
+    "render_backup_info",
     "render_health",
     "render_backup_overview",
+    "render_backup_result",
+    "render_backup_stats",
     "render_modules",
     "render_overview",
     "render_restore_instructions",

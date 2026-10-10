@@ -7,6 +7,7 @@ from pathlib import Path
 
 from core.backup import BackupManager
 from core.migrations import DatabaseMigrator
+from core.process_lock import ApplicationLock
 from scripts.database import _check, _restore
 
 
@@ -63,3 +64,19 @@ class DatabaseCliTests(unittest.TestCase):
         self.assertEqual(0, result)
         self.assertEqual([1], user_ids)
         self.assertIn("Database integrity: ok", output.getvalue())
+
+    def test_restore_refuses_while_application_lock_is_held(self):
+        lock = ApplicationLock()
+        lock.acquire()
+        try:
+            with tempfile.TemporaryDirectory() as directory, redirect_stdout(StringIO()) as output:
+                result = _restore(
+                    Path(directory) / "users.db",
+                    Path(directory) / "backups",
+                    "users_manual_20260101_010101.db",
+                )
+        finally:
+            lock.release()
+
+        self.assertEqual(1, result)
+        self.assertIn("FazTestBot is running", output.getvalue())

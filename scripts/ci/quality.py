@@ -21,6 +21,7 @@ LINT_TARGETS = (
     "core/module_base.py",
     "core/module_manager.py",
     "core/observability.py",
+    "core/process_lock.py",
     "core/settings.py",
     "core/storage.py",
     "bot.py",

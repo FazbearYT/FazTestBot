@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -112,6 +113,28 @@ class AdminInteractionTests(unittest.TestCase):
 
         self.assertIsNone(confirmations.consume(first, 1, 10))
         self.assertIsNotNone(confirmations.consume(second, 1, 10))
+
+    def test_auth_failure_tracking_is_bounded_and_thread_safe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = AdminManager(
+                Path(directory) / "users.db",
+                admins=(),
+                secret_code="correct",
+                auth_max_failures=100,
+                auth_failure_capacity=2,
+            )
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                results = list(
+                    executor.map(
+                        lambda _index: manager.authenticate_by_code(1, "wrong"),
+                        range(20),
+                    )
+                )
+            manager.authenticate_by_code(2, "wrong")
+            manager.authenticate_by_code(3, "wrong")
+
+        self.assertEqual([False] * 20, results)
+        self.assertLessEqual(len(manager._auth_failures), 2)
 
 
 if __name__ == "__main__":

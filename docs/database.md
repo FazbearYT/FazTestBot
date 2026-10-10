@@ -42,7 +42,8 @@ python -m scripts.database check
 
 `restore` проверяет формат и целостность выбранного файла, создаёт защитную копию
 текущей БД и проверяет восстановленную БД. Онлайн-восстановление из Telegram-панели
-намеренно отключено.
+намеренно отключено. Запущенный бот удерживает межпроцессную блокировку; CLI
+откажется восстанавливать БД, пока процесс бота не остановлен.
 
 `migrate` creates another pre-migration backup automatically when changes are
 pending. Keep the bot stopped until both the migration and final integrity check

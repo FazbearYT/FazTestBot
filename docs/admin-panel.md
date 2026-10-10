@@ -35,8 +35,9 @@ python -m scripts.database restore --backup-file <generated-backup-name>
 python -m scripts.database check
 ```
 
-The CLI validates the snapshot, creates a safety backup, restores through SQLite's
-Online Backup API, and performs an integrity/schema check before returning success.
+The CLI refuses to proceed while the bot owns the application process lock, validates
+the snapshot, creates a safety backup, restores through SQLite's Online Backup API,
+and performs an integrity/schema check before returning success.
 
 ## Module contract
 

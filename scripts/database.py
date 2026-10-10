@@ -9,6 +9,7 @@ from pathlib import Path
 from core.bootstrap import migrate_database_safely
 from core.migrations import DatabaseMigrator, MigrationError
 from core.paths import BACKUPS_DIR, DATABASE_PATH
+from core.process_lock import ApplicationAlreadyRunningError, ApplicationLock
 from core.storage import DatabaseIntegrityError, SQLiteDatabase
 
 
@@ -56,12 +57,17 @@ def _backup(path: Path, backup_dir: Path) -> int:
 def _restore(path: Path, backup_dir: Path, backup_file: str) -> int:
     from core.backup import BackupManager
 
-    manager = BackupManager(backup_dir=backup_dir, db_path=path)
-    success, message = manager.restore_backup(backup_file)
-    print(message)
-    if not success:
+    try:
+        with ApplicationLock():
+            manager = BackupManager(backup_dir=backup_dir, db_path=path)
+            success, message = manager.restore_backup(backup_file)
+            print(message)
+            if not success:
+                return 1
+            return _check(path)
+    except ApplicationAlreadyRunningError:
+        print("Database restore refused: FazTestBot is running; stop it and retry")
         return 1
-    return _check(path)
 
 
 def main() -> int:

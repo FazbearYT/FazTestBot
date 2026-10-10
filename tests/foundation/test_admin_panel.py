@@ -1,9 +1,13 @@
 import unittest
+from datetime import datetime
 from unittest.mock import Mock
 
 from core.admin_panel import (
     AdminPanelService,
+    render_backup_info,
     render_backup_overview,
+    render_backup_result,
+    render_backup_stats,
     render_health,
     render_modules,
     render_overview,
@@ -103,7 +107,7 @@ class AdminPanelTests(unittest.TestCase):
             "username": "name&more",
             "created_at": "2026-01-01 10:00:00",
             "last_active": "2026-01-02 10:00:00",
-            "module_stats": {"<module>": 1},
+            "module_stats": {"<module>": "<count>"},
             "last_operations": [
                 {
                     "cipher_type": "<cipher>",
@@ -115,7 +119,7 @@ class AdminPanelTests(unittest.TestCase):
         }
         results = [
             {
-                "user_id": 5,
+                "user_id": "<id>",
                 "cipher_type": "<cipher>",
                 "original_text": "<original>",
                 "encrypted_text": "a&b",
@@ -130,6 +134,8 @@ class AdminPanelTests(unittest.TestCase):
         self.assertIn("&lt;secret&gt;", profile_text)
         self.assertIn("&lt;query&gt;", search_text)
         self.assertIn("a&amp;b", search_text)
+        self.assertIn("&lt;count&gt;", profile_text)
+        self.assertIn("&lt;id&gt;", search_text)
 
     def test_rendered_search_is_bounded_for_telegram(self):
         results = [
@@ -160,6 +166,29 @@ class AdminPanelTests(unittest.TestCase):
         self.assertIn("до 9 копий / 45 дней", overview)
         self.assertIn("Онлайн-восстановление отключено", restore)
         self.assertIn("users_manual_&lt;unsafe&gt;.db", restore)
+
+        result = render_backup_result("failed: <filesystem>", 1)
+        stats = render_backup_stats(
+            {
+                "total_count": 1,
+                "auto_count": 0,
+                "manual_count": 1,
+                "total_size_formatted": "<1 KB>",
+                "newest": "<now>",
+                "oldest": "<then>",
+            }
+        )
+        info = render_backup_info(
+            {
+                "filename": "<backup>.db",
+                "size_formatted": "<1 KB>",
+                "created": datetime(2026, 1, 1),
+                "type": "<manual>",
+            }
+        )
+        self.assertIn("&lt;filesystem&gt;", result)
+        self.assertIn("&lt;1 KB&gt;", stats)
+        self.assertIn("&lt;backup&gt;.db", info)
 
 
 if __name__ == "__main__":
