@@ -40,6 +40,8 @@ CONFLICT_MARKER = re.compile(
 TELEGRAM_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])\d{8,12}:[A-Za-z0-9_-]{30,}(?![A-Za-z0-9_-])")
 ACTION_USE = re.compile(r"^\s*-?\s*uses:\s*([^\s#]+)", re.MULTILINE)
 FULL_COMMIT_SHA = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
+DIRECT_SQLITE_CONNECT = re.compile(r"\bsqlite3\s*\.\s*connect\s*\(")
+SCHEMA_DDL = re.compile(r"\bCREATE\s+TABLE\b", re.IGNORECASE)
 
 
 class ContractError(RuntimeError):
@@ -130,6 +132,11 @@ def validate_repository(root: Path, paths: Iterable[str] | None = None) -> list[
             errors.append(f"unresolved merge marker: {relative_path}")
         if TELEGRAM_TOKEN.search(content):
             errors.append(f"possible Telegram bot token: {relative_path}")
+        if lowered.endswith(".py") and lowered.startswith(("core/", "modules/")):
+            if relative_path != "core/storage.py" and DIRECT_SQLITE_CONNECT.search(content):
+                errors.append(f"direct sqlite3.connect outside core/storage.py: {relative_path}")
+            if relative_path != "core/migrations.py" and SCHEMA_DDL.search(content):
+                errors.append(f"schema DDL outside core/migrations.py: {relative_path}")
 
     for workflow in sorted((root / ".github" / "workflows").glob("*.y*ml")):
         content = workflow.read_text(encoding="utf-8")

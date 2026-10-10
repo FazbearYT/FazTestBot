@@ -37,3 +37,6 @@ python -m scripts.ci.run_all
 New modules must include their own tests. See [CONTRIBUTING.md](CONTRIBUTING.md) for
 the contract and [docs/ci.md](docs/ci.md) for pipeline architecture and branch
 protection recommendations.
+
+Database migration, integrity-check, and backup procedures are documented in
+[docs/database.md](docs/database.md).

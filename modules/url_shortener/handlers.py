@@ -2,7 +2,6 @@
 # Обработчики модуля "URL Shortener"
 
 import asyncio
-import sqlite3
 from telebot import types
 from typing import Any
 from core.module_base import BaseModule
@@ -13,7 +12,6 @@ from .keyboards import (
     my_links_keyboard
 )
 from .api_client import url_client
-import config
 
 # Глобальный экземпляр БД
 db = DatabaseManager()
@@ -248,29 +246,14 @@ class URLShortenerModule(BaseModule):
     def _log_url_operation(user_id: int, original_url: str, shortened_url: str):
         """Логирование операции сокращения в БД"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            # Создаём таблицу если не существует
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS url_shortener_logs (
-                    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    original_url TEXT NOT NULL,
-                    shortened_url TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    clicks_count INTEGER DEFAULT 0
+            with db.database.connection(write=True) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO url_shortener_logs (user_id, original_url, shortened_url)
+                    VALUES (?, ?, ?)
+                    """,
+                    (user_id, original_url, shortened_url),
                 )
-            """)
-
-            # Вставляем запись
-            cursor.execute("""
-                INSERT INTO url_shortener_logs (user_id, original_url, shortened_url)
-                VALUES (?, ?, ?)
-            """, (user_id, original_url, shortened_url))
-
-            conn.commit()
-            conn.close()
         except Exception as e:
             print(f"⚠️ Ошибка логирования URL: {str(e)}")
 
@@ -278,19 +261,19 @@ class URLShortenerModule(BaseModule):
     def _get_user_links(user_id: int) -> list:
         """Получение истории ссылок пользователя из БД"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute("""
-                SELECT original_url, shortened_url, created_at, clicks_count
-                FROM url_shortener_logs
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-                LIMIT 50
-            """, (user_id,))
-
+            with db.database.connection() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT original_url, shortened_url, created_at, clicks_count
+                    FROM url_shortener_logs
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 50
+                    """,
+                    (user_id,),
+                ).fetchall()
             links = []
-            for row in cursor.fetchall():
+            for row in rows:
                 links.append({
                     'original_url': row[0],
                     'shortened_url': row[1],
@@ -298,7 +281,6 @@ class URLShortenerModule(BaseModule):
                     'clicks_count': row[3]
                 })
 
-            conn.close()
             return links
         except Exception as e:
             print(f"⚠️ Ошибка получения ссылок: {str(e)}")
