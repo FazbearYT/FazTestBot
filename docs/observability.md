@@ -30,6 +30,12 @@ Use `core.observability.get_logger(__name__)` and attach a stable event name wit
 standard `LogRecord` attributes. Use `logger.exception(...)` only inside an active
 exception handler so the diagnostic traceback is retained.
 
+`core.exceptions` classifies failures as `user`, `transient`, `system`, or
+`critical`. The classification determines log severity and whether retry is safe.
+`handle_exception` records a stable error code and returns a localized safe message;
+generic exception details are never sent to Telegram, and user-input exception text
+is not copied into diagnostic logs.
+
 ## Incident workflow
 
 1. Record the UTC time and the relevant `operation_id` shown in the JSONL log.
