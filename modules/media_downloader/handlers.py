@@ -1,62 +1,19 @@
 # modules/media_downloader/handlers.py
 # Обработчики модуля "Media Downloader"
 
-import os
-import sqlite3
-from datetime import datetime, timedelta
 from telebot import types
 from typing import Any
 from core.module_base import BaseModule
 from core.database import DatabaseManager
 from .keyboards import (
     media_downloader_menu_keyboard,
-    quality_keyboard,
-    my_downloads_keyboard
 )
-from .downloader import downloader
-from .config import (
-    ENABLED,
-    MAX_FILE_SIZE_MB,
-    MAX_DOWNLOADS_PER_USER_PER_DAY,
-    TABLE_NAME
-)
-import config
 
 db = DatabaseManager()
 
 
 class MediaDownloaderModule(BaseModule):
     """Модуль загрузки медиа - ВРЕМЕННО ОТКЛЮЧЁН"""
-
-    def __init__(self, module_id, name, description, icon, version, callback_prefix):
-        super().__init__(module_id, name, description, icon, version, callback_prefix)
-        self._init_database()
-
-    def _init_database(self):
-        """Инициализация БД"""
-        try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    url TEXT NOT NULL,
-                    media_type TEXT NOT NULL,
-                    platform TEXT,
-                    title TEXT,
-                    file_path TEXT,
-                    file_size INTEGER,
-                    quality TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"⚠️ Ошибка инициализации БД: {str(e)}")
 
     def handle_entry(self, bot: Any, call: Any) -> None:
         """Вход в модуль - ЗАГЛУШКА"""

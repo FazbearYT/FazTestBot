@@ -3,7 +3,6 @@
 # Версия: 4.3.2
 
 import random
-import sqlite3
 from datetime import datetime, timedelta
 from telebot import types
 from typing import Any
@@ -28,8 +27,6 @@ from .config import (
     DEFAULT_MIN,
     DEFAULT_MAX
 )
-import config
-
 db = DatabaseManager()
 
 
@@ -43,44 +40,6 @@ class DecisionMakerModule(BaseModule):
     - Случайный герой Dota 2
     - Подбрасывание монетки
     """
-
-    def __init__(self, module_id, name, description, icon, version, callback_prefix):
-        """Инициализация модуля Decision Maker"""
-        super().__init__(module_id, name, description, icon, version, callback_prefix)
-        self._init_database()
-
-    def _init_database(self):
-        """Инициализация таблицы в БД"""
-        try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    action_type TEXT NOT NULL,
-                    result TEXT,
-                    details TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            # Таблица статистики монетки
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS coin_flip_stats (
-                    user_id INTEGER PRIMARY KEY,
-                    heads_count INTEGER DEFAULT 0,
-                    tails_count INTEGER DEFAULT 0,
-                    total_count INTEGER DEFAULT 0,
-                    last_flip TIMESTAMP
-                )
-            """)
-
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"⚠️ Ошибка инициализации БД: {str(e)}")
 
     def handle_entry(self, bot: Any, call: Any) -> None:
         """Вход в модуль"""
@@ -784,73 +743,52 @@ class DecisionMakerModule(BaseModule):
     def _log_action(self, user_id: int, action_type: str, result: str, details: str):
         """Логирование действия"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute(f"""
-                INSERT INTO {TABLE_NAME} (user_id, action_type, result, details)
-                VALUES (?, ?, ?, ?)
-            """, (user_id, action_type, result, details[:200]))
-
-            conn.commit()
-            conn.close()
+            with db.database.connection(write=True) as connection:
+                connection.execute(
+                    f"""
+                    INSERT INTO {TABLE_NAME} (user_id, action_type, result, details)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (user_id, action_type, result, details[:200]),
+                )
         except Exception as e:
             print(f"⚠️ Ошибка логирования: {str(e)}")
 
     def _update_coin_stats(self, user_id: int, result: str):
         """Обновление статистики монетки"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            # Проверяем существует ли запись
-            cursor.execute("SELECT user_id FROM coin_flip_stats WHERE user_id = ?", (user_id,))
-            exists = cursor.fetchone()
-
-            if exists:
-                if result == "Орёл":
-                    cursor.execute("""
-                        UPDATE coin_flip_stats 
-                        SET heads_count = heads_count + 1, 
-                            total_count = total_count + 1,
-                            last_flip = CURRENT_TIMESTAMP
-                        WHERE user_id = ?
-                    """, (user_id,))
-                else:
-                    cursor.execute("""
-                        UPDATE coin_flip_stats 
-                        SET tails_count = tails_count + 1, 
-                            total_count = total_count + 1,
-                            last_flip = CURRENT_TIMESTAMP
-                        WHERE user_id = ?
-                    """, (user_id,))
-            else:
-                heads = 1 if result == "Орёл" else 0
-                tails = 1 if result == "Решка" else 0
-                cursor.execute("""
-                    INSERT INTO coin_flip_stats (user_id, heads_count, tails_count, total_count, last_flip)
+            heads = 1 if result == "Орёл" else 0
+            tails = 1 if result == "Решка" else 0
+            with db.database.connection(write=True) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO coin_flip_stats (
+                        user_id, heads_count, tails_count, total_count, last_flip
+                    )
                     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (user_id, heads, tails, 1))
-
-            conn.commit()
-            conn.close()
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        heads_count = coin_flip_stats.heads_count + excluded.heads_count,
+                        tails_count = coin_flip_stats.tails_count + excluded.tails_count,
+                        total_count = coin_flip_stats.total_count + 1,
+                        last_flip = CURRENT_TIMESTAMP
+                    """,
+                    (user_id, heads, tails, 1),
+                )
         except Exception as e:
             print(f"⚠️ Ошибка обновления статистики: {str(e)}")
 
     def _get_coin_stats(self, user_id: int) -> dict:
         """Получение статистики монетки"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute("""
-                SELECT heads_count, tails_count, total_count
-                FROM coin_flip_stats
-                WHERE user_id = ?
-            """, (user_id,))
-
-            result = cursor.fetchone()
-            conn.close()
+            with db.database.connection(write=False) as connection:
+                result = connection.execute(
+                    """
+                    SELECT heads_count, tails_count, total_count
+                    FROM coin_flip_stats
+                    WHERE user_id = ?
+                    """,
+                    (user_id,),
+                ).fetchone()
 
             if result:
                 heads, tails, total = result

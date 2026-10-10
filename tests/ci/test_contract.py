@@ -87,6 +87,21 @@ class RepositoryContractTests(unittest.TestCase):
 
         self.assertEqual(["legacy"], discover_modules(self.root))
 
+    def test_database_access_and_schema_are_centralized(self):
+        core_file = self.root / "core" / "unsafe.py"
+        core_file.parent.mkdir()
+        core_file.write_text("sqlite3.connect('users.db')\n", encoding="utf-8")
+        module_file = self.root / "modules" / "legacy" / "schema.py"
+        module_file.write_text("SQL = 'CREATE TABLE drift (id INT)'\n", encoding="utf-8")
+
+        errors = validate_repository(
+            self.root,
+            ["core/unsafe.py", "modules/legacy/schema.py"],
+        )
+
+        self.assertIn("direct sqlite3.connect outside core/storage.py: core/unsafe.py", errors)
+        self.assertIn("schema DDL outside core/migrations.py: modules/legacy/schema.py", errors)
+
 
 if __name__ == "__main__":
     unittest.main()

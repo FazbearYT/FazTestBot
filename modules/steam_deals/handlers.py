@@ -2,7 +2,6 @@
 # Обработчики модуля "Steam Deals Tracker"
 
 import asyncio
-import sqlite3
 from datetime import datetime, timedelta
 from telebot import types
 from typing import Any
@@ -20,11 +19,9 @@ from .api_client import steam_client
 from .config import (
     MAX_WISHLIST_GAMES,
     WISHLIST_TABLE,
-    CACHE_TABLE,
     CURRENCY_SYMBOL,
     PRICE_ALERT_THRESHOLD
 )
-import config
 
 db = DatabaseManager()
 
@@ -42,43 +39,6 @@ class SteamDealsModule(BaseModule):
     def __init__(self, module_id, name, description, icon, version, callback_prefix):
         """Инициализация модуля Steam Deals Tracker"""
         super().__init__(module_id, name, description, icon, version, callback_prefix)
-        self._init_database()
-
-    def _init_database(self):
-        """Инициализация таблиц в БД"""
-        try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            # Таблица вишлиста
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {WISHLIST_TABLE} (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    game_id TEXT NOT NULL,
-                    game_name TEXT NOT NULL,
-                    current_price REAL,
-                    historical_low REAL,
-                    discount_percent REAL,
-                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_id, game_id)
-                )
-            """)
-
-            # Таблица кэша
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {CACHE_TABLE} (
-                    cache_key TEXT PRIMARY KEY,
-                    cache_data TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"⚠️ Ошибка инициализации БД: {str(e)}")
 
     def handle_entry(self, bot: Any, call: Any) -> None:
         """Вход в модуль"""
@@ -640,18 +600,19 @@ class SteamDealsModule(BaseModule):
     def _get_user_wishlist(self, user_id: int) -> list:
         """Получение вишлиста пользователя"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute(f"""
-                SELECT game_id, game_name, current_price, historical_low, discount_percent, added_at
-                FROM {WISHLIST_TABLE}
-                WHERE user_id = ?
-                ORDER BY added_at DESC
-            """, (user_id,))
-
+            with db.database.connection() as connection:
+                rows = connection.execute(
+                    f"""
+                    SELECT game_id, game_name, current_price, historical_low,
+                           discount_percent, added_at
+                    FROM {WISHLIST_TABLE}
+                    WHERE user_id = ?
+                    ORDER BY added_at DESC
+                    """,
+                    (user_id,),
+                ).fetchall()
             wishlist = []
-            for row in cursor.fetchall():
+            for row in rows:
                 wishlist.append({
                     'game_id': row[0],
                     'game_name': row[1],
@@ -661,9 +622,8 @@ class SteamDealsModule(BaseModule):
                     'added_at': row[5]
                 })
 
-            conn.close()
             return wishlist
-        except:
+        except Exception:
             return []
 
     def _add_game_to_wishlist(self, user_id: int, game_id: str, game_name: str,
@@ -671,26 +631,45 @@ class SteamDealsModule(BaseModule):
                               discount_percent: float = 0) -> bool:
         """Добавление игры в вишлист"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
+            with db.database.connection(write=True) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                exists = connection.execute(
+                    f"""
+                    SELECT 1 FROM {WISHLIST_TABLE}
+                    WHERE user_id = ? AND game_id = ?
+                    """,
+                    (user_id, game_id),
+                ).fetchone()
+                if exists is None:
+                    count = connection.execute(
+                        f"SELECT COUNT(*) FROM {WISHLIST_TABLE} WHERE user_id = ?",
+                        (user_id,),
+                    ).fetchone()[0]
+                    if count >= MAX_WISHLIST_GAMES:
+                        return False
 
-            # Проверяем лимит
-            cursor.execute(f"SELECT COUNT(*) FROM {WISHLIST_TABLE} WHERE user_id = ?", (user_id,))
-            count = cursor.fetchone()[0]
-
-            if count >= MAX_WISHLIST_GAMES:
-                conn.close()
-                return False
-
-            # Добавляем или обновляем
-            cursor.execute(f"""
-                INSERT OR REPLACE INTO {WISHLIST_TABLE} 
-                (user_id, game_id, game_name, current_price, historical_low, discount_percent, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (user_id, game_id, game_name, current_price, historical_low, discount_percent))
-
-            conn.commit()
-            conn.close()
+                connection.execute(
+                    f"""
+                    INSERT INTO {WISHLIST_TABLE}
+                        (user_id, game_id, game_name, current_price,
+                         historical_low, discount_percent, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id, game_id) DO UPDATE SET
+                        game_name = excluded.game_name,
+                        current_price = excluded.current_price,
+                        historical_low = excluded.historical_low,
+                        discount_percent = excluded.discount_percent,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        user_id,
+                        game_id,
+                        game_name,
+                        current_price,
+                        historical_low,
+                        discount_percent,
+                    ),
+                )
             return True
         except Exception as e:
             print(f"⚠️ Ошибка добавления в вишлист: {str(e)}")
@@ -699,24 +678,28 @@ class SteamDealsModule(BaseModule):
     def _remove_game_from_wishlist(self, user_id: int, game_index: int) -> bool:
         """Удаление игры из вишлиста по индексу"""
         try:
-            wishlist = self._get_user_wishlist(user_id)
-
-            if game_index < 1 or game_index > len(wishlist):
+            if game_index < 1:
                 return False
-
-            game = wishlist[game_index - 1]
-
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute(f"""
-                DELETE FROM {WISHLIST_TABLE}
-                WHERE user_id = ? AND game_id = ?
-            """, (user_id, game['game_id']))
-
-            conn.commit()
-            conn.close()
-            return True
+            with db.database.connection(write=True) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                game = connection.execute(
+                    f"""
+                    SELECT game_id FROM {WISHLIST_TABLE}
+                    WHERE user_id = ? ORDER BY added_at DESC
+                    LIMIT 1 OFFSET ?
+                    """,
+                    (user_id, game_index - 1),
+                ).fetchone()
+                if game is None:
+                    return False
+                cursor = connection.execute(
+                    f"""
+                    DELETE FROM {WISHLIST_TABLE}
+                    WHERE user_id = ? AND game_id = ?
+                    """,
+                    (user_id, game[0]),
+                )
+                return cursor.rowcount == 1
         except Exception as e:
             print(f"⚠️ Ошибка удаления из вишлиста: {str(e)}")
             return False
