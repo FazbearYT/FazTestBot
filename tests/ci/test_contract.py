@@ -102,6 +102,19 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("direct sqlite3.connect outside core/storage.py: core/unsafe.py", errors)
         self.assertIn("schema DDL outside core/migrations.py: modules/legacy/schema.py", errors)
 
+    def test_core_requires_explicit_exceptions_and_logging(self):
+        core_file = self.root / "core" / "unsafe.py"
+        core_file.parent.mkdir()
+        core_file.write_text(
+            "try:\n    work()\nexcept:\n    print('ignored')\n",
+            encoding="utf-8",
+        )
+
+        errors = validate_repository(self.root, ["core/unsafe.py"])
+
+        self.assertIn("bare except in core code: core/unsafe.py", errors)
+        self.assertIn("direct print in core code: core/unsafe.py", errors)
+
 
 if __name__ == "__main__":
     unittest.main()

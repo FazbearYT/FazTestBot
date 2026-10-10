@@ -126,50 +126,82 @@ def build_runtime(
 
 def _print_startup_summary(runtime: BotRuntime, settings: Settings) -> None:
     import config
+    from core.observability import event_fields, get_logger
     from core.paths import BACKUPS_DIR, DATABASE_PATH, DOWNLOADS_DIR
 
-    print("\nRegistered modules:")
+    startup_logger = get_logger("runtime")
     for module in runtime.module_manager.get_all_modules():
-        print(f"  - {module.icon} {module.name} v{module.version}")
+        startup_logger.info(
+            "module registered: %s v%s",
+            module.name,
+            module.version,
+            extra=event_fields(
+                "module.registered",
+                module_id=module.id,
+                module_version=module.version,
+            ),
+        )
 
     errors = runtime.module_manager.get_errors()
-    if errors:
-        print("\nModule loading errors:")
-        for error in errors:
-            print(f"  - {error['module']}: {error['error']}")
-
-    print("\n" + "=" * 50)
-    print(f"FazTestBot v{config.VERSION} started")
-    print(f"Update date: {config.LAST_UPDATE_DATE}")
-    print(f"Database: {DATABASE_PATH}")
-    print(f"Backups: {BACKUPS_DIR} (keep {settings.backup_retention_count} files)")
-    print(f"Downloads: {DOWNLOADS_DIR} (max {settings.max_download_size_mb} MB)")
-    print(f"Administrators: {len(settings.admins)}")
-    print(f"Loaded modules: {runtime.loaded_count}")
-    print("=" * 50)
-    print("\nPress Ctrl+C to stop.\n")
+    startup_logger.info(
+        "FazTestBot v%s started with %s modules",
+        config.VERSION,
+        runtime.loaded_count,
+        extra=event_fields(
+            "application.started",
+            version=config.VERSION,
+            update_date=config.LAST_UPDATE_DATE,
+            database_path=str(DATABASE_PATH),
+            backup_path=str(BACKUPS_DIR),
+            download_path=str(DOWNLOADS_DIR),
+            backup_retention_count=settings.backup_retention_count,
+            max_download_size_mb=settings.max_download_size_mb,
+            administrator_count=len(settings.admins),
+            loaded_module_count=runtime.loaded_count,
+            module_error_count=len(errors),
+        ),
+    )
 
 
 def main() -> int:
     try:
         settings = load_settings()
+        from core.observability import configure_logging, event_fields, get_logger
+
+        configure_logging(
+            level=settings.log_level,
+            retention_days=settings.log_retention_days,
+        )
+        runtime_logger = get_logger("runtime")
         runtime = build_runtime(settings)
     except ConfigurationError as error:
         print(f"Configuration error: {error}", file=sys.stderr)
         print("Run `python -m scripts.doctor` for details.", file=sys.stderr)
         return 2
     except Exception as error:
-        print(f"Startup failed: {error}", file=sys.stderr)
+        if "runtime_logger" in locals():
+            runtime_logger.exception(
+                "application startup failed",
+                extra=event_fields("application.startup_failed"),
+            )
+        else:
+            print(f"Startup failed: {error}", file=sys.stderr)
         return 1
 
     _print_startup_summary(runtime, settings)
     try:
         runtime.run()
     except KeyboardInterrupt:
-        print("\nFazTestBot stopped by user.")
+        runtime_logger.info(
+            "FazTestBot stopped by operator",
+            extra=event_fields("application.stopped", reason="keyboard_interrupt"),
+        )
         return 0
-    except Exception as error:
-        print(f"Runtime failed: {error}", file=sys.stderr)
+    except Exception:
+        runtime_logger.exception(
+            "application runtime failed",
+            extra=event_fields("application.runtime_failed"),
+        )
         return 1
     return 0
 

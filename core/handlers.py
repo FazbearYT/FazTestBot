@@ -24,6 +24,10 @@ from core.database import DatabaseManager
 from core.admin import admin_manager
 from core.easter_eggs import EasterEggManager, easter_egg_manager
 from core.backup import backup_manager
+from core.exceptions import classify_exception, handle_exception
+from core.observability import event_fields, get_logger
+
+logger = get_logger(__name__)
 
 # Инициализация менеджеров
 db = DatabaseManager()
@@ -240,8 +244,12 @@ def register_global_handlers(bot):
                 # Удаляем сообщение с меню пасхалки
                 try:
                     bot.delete_message(chat_id, message_id)
-                except:
-                    pass
+                except Exception as error:
+                    logger.debug(
+                        "easter egg menu message was already unavailable",
+                        exc_info=(type(error), error, error.__traceback__),
+                        extra=event_fields("telegram.message_delete_failed"),
+                    )
 
                 # Отправляем новое сообщение с главным меню
                 bot.send_message(
@@ -272,11 +280,14 @@ def register_global_handlers(bot):
                 )
 
         except Exception as e:
-            # Полное логирование ошибки для отладки
-            print(f"❌ Ошибка в handle_easter_egg_callbacks: {str(e)}")
+            user_message = handle_exception(
+                e,
+                logger,
+                event="handler.easter_egg_failed",
+            )
             bot.answer_callback_query(
                 call.id,
-                f"Ошибка: {str(e)[:60]}",
+                user_message[:200],
                 show_alert=True
             )
 
@@ -491,10 +502,16 @@ def register_global_handlers(bot):
                         parse_mode="HTML"
                     )
                 except Exception as e:
+                    user_message = handle_exception(
+                        e,
+                        logger,
+                        event="admin.export_failed",
+                        context={"export_format": "csv"},
+                    )
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=f"❌ Ошибка экспорта: {str(e)}",
+                        text=user_message,
                         reply_markup=admin_menu_keyboard(),
                         parse_mode="HTML"
                     )
@@ -521,10 +538,16 @@ def register_global_handlers(bot):
                         parse_mode="HTML"
                     )
                 except Exception as e:
+                    user_message = handle_exception(
+                        e,
+                        logger,
+                        event="admin.export_failed",
+                        context={"export_format": "json"},
+                    )
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=f"❌ Ошибка экспорта: {str(e)}",
+                        text=user_message,
                         reply_markup=admin_menu_keyboard(),
                         parse_mode="HTML"
                     )
@@ -766,12 +789,18 @@ def register_global_handlers(bot):
                 )
 
         except Exception as e:
+            disposition = classify_exception(e)
+            user_message = handle_exception(
+                e,
+                logger,
+                event="admin.callback_failed",
+            )
             bot.answer_callback_query(
                 call.id,
-                f"Ошибка админ-панели: {str(e)[:60]}",
+                user_message[:200],
                 show_alert=True
             )
-            admin_mgr.log_admin_action(call.from_user.id, "error", None, str(e))
+            admin_mgr.log_admin_action(call.from_user.id, "error", None, disposition.code)
 
     def handle_user_search_input(message, bot_instance):
         """Обработка ввода ID пользователя для поиска (с проверкой состояния)"""
@@ -1052,9 +1081,14 @@ def register_global_handlers(bot):
                     )
 
         except Exception as e:
+            user_message = handle_exception(
+                e,
+                logger,
+                event="handler.callback_failed",
+            )
             bot.answer_callback_query(
                 call.id,
-                f"Ошибка: {str(e)[:60]}",
+                user_message[:200],
                 show_alert=True
             )
 

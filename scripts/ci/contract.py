@@ -42,6 +42,8 @@ ACTION_USE = re.compile(r"^\s*-?\s*uses:\s*([^\s#]+)", re.MULTILINE)
 FULL_COMMIT_SHA = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
 DIRECT_SQLITE_CONNECT = re.compile(r"\bsqlite3\s*\.\s*connect\s*\(")
 SCHEMA_DDL = re.compile(r"\bCREATE\s+TABLE\b", re.IGNORECASE)
+BARE_EXCEPT = re.compile(r"^\s*except\s*:\s*$", re.MULTILINE)
+DIRECT_PRINT = re.compile(r"\bprint\s*\(")
 
 
 class ContractError(RuntimeError):
@@ -137,6 +139,11 @@ def validate_repository(root: Path, paths: Iterable[str] | None = None) -> list[
                 errors.append(f"direct sqlite3.connect outside core/storage.py: {relative_path}")
             if relative_path != "core/migrations.py" and SCHEMA_DDL.search(content):
                 errors.append(f"schema DDL outside core/migrations.py: {relative_path}")
+        if lowered.endswith(".py") and lowered.startswith("core/"):
+            if BARE_EXCEPT.search(content):
+                errors.append(f"bare except in core code: {relative_path}")
+            if DIRECT_PRINT.search(content):
+                errors.append(f"direct print in core code: {relative_path}")
 
     for workflow in sorted((root / ".github" / "workflows").glob("*.y*ml")):
         content = workflow.read_text(encoding="utf-8")
