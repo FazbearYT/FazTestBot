@@ -40,3 +40,6 @@ protection recommendations.
 
 Database migration, integrity-check, and backup procedures are documented in
 [docs/database.md](docs/database.md).
+
+Runtime logging, redaction, correlation, and incident-diagnostics conventions are
+documented in [docs/observability.md](docs/observability.md).

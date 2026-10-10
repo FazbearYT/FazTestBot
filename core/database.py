@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from core.migrations import DatabaseMigrator
+from core.observability import event_fields, get_logger
 from core.paths import DATABASE_PATH
 from core.storage import SQLiteDatabase
+
+logger = get_logger(__name__)
 
 
 class DatabaseManager:
@@ -36,7 +39,11 @@ class DatabaseManager:
             )
             deleted = cursor.rowcount
         if deleted > 0:
-            print(f"🧹 Очищено {deleted} старых записей логов")
+            logger.info(
+                "removed %s expired database log records",
+                deleted,
+                extra=event_fields("database.logs_pruned", deleted_count=deleted),
+            )
 
     def create_or_update_user(
         self,

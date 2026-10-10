@@ -6,6 +6,9 @@ import os
 from typing import Any
 
 from .module_base import BaseModule
+from .observability import event_fields, get_logger
+
+logger = get_logger(__name__)
 
 
 class ModuleManager:
@@ -38,7 +41,11 @@ class ModuleManager:
 
         # Сканируем папку modules/
         if not os.path.exists(self.modules_path):
-            print(f"⚠️ Папка модулей не найдена: {self.modules_path}")
+            logger.warning(
+                "modules directory not found: %s",
+                self.modules_path,
+                extra=event_fields("module.discovery_path_missing"),
+            )
             return 0
 
         for item in sorted(os.listdir(self.modules_path)):
@@ -120,20 +127,32 @@ class ModuleManager:
                     # routing when its startup hook failed.
                     self.modules.pop(module_instance.id, None)
                     self.callback_map.pop(module_instance.callback_prefix, None)
-                    self._log_error(module_name, f"Ошибка on_load: {str(e)}")
+                    self._log_error(module_name, f"Ошибка on_load: {str(e)}", exception=e)
                     return False
 
-            print(
-                f"✅ Модуль загружен: {module_instance.icon} "
-                f"{module_instance.name} v{module_instance.version}"
+            logger.info(
+                "module loaded: %s v%s",
+                module_instance.name,
+                module_instance.version,
+                extra=event_fields(
+                    "module.loaded",
+                    module_id=module_instance.id,
+                    module_version=module_instance.version,
+                ),
             )
             return True
 
         except Exception as e:
-            self._log_error(module_name, f"Исключение при загрузке: {str(e)}")
+            self._log_error(module_name, f"Исключение при загрузке: {str(e)}", exception=e)
             return False
 
-    def _log_error(self, module_name: str, error_msg: str):
+    def _log_error(
+        self,
+        module_name: str,
+        error_msg: str,
+        *,
+        exception: Exception | None = None,
+    ):
         """Логирование ошибки загрузки модуля"""
         import datetime
 
@@ -143,7 +162,16 @@ class ModuleManager:
             "timestamp": datetime.datetime.now().isoformat(),
         }
         self._load_errors.append(error)
-        print(f"❌ Ошибка загрузки модуля {module_name}: {error_msg}")
+        exc_info = None
+        if exception is not None:
+            exc_info = (type(exception), exception, exception.__traceback__)
+        logger.error(
+            "module %s failed to load: %s",
+            module_name,
+            error_msg,
+            exc_info=exc_info,
+            extra=event_fields("module.load_failed", module_id=module_name),
+        )
 
     def get_module_by_id(self, module_id: str) -> BaseModule | None:
         """Получение модуля по ID"""
