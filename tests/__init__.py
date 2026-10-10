@@ -1,0 +1,1 @@
+"""FazTestBot automated tests."""
