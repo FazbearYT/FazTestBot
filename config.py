@@ -1,79 +1,60 @@
-# config.py
-# Конфигурация FazTestBot
-# Модульный бот-агрегатор с безопасным хранением секретов
+"""Compatibility facade for environment-based application configuration.
 
-# ====== ИМПОРТ ПУТЕЙ ======
-from core.paths import DATABASE_PATH, DOWNLOADS_DIR, BACKUPS_DIR, TEMP_DIR, EXPORTS_DIR
+New code should depend on :mod:`core.settings`. Existing modules can keep using
+these constants while configuration is migrated incrementally.
+"""
 
-# ====== ВЕРСИЯ БОТА (ЕДИНЫЙ ИСТОЧНИК) ======
-VERSION = "4.4.2"
-LAST_UPDATE_DATE = "06.03.2026"
+from core.paths import BACKUPS_DIR as BACKUPS_DIR
+from core.paths import DATABASE_PATH as DATABASE_PATH
+from core.paths import DOWNLOADS_DIR as DOWNLOADS_DIR
+from core.paths import EXPORTS_DIR as EXPORTS_DIR
+from core.paths import TEMP_DIR as TEMP_DIR
+from core.settings import ConfigurationError as ConfigurationError
+from core.settings import load_settings
+
+VERSION = "4.5.0"
+LAST_UPDATE_DATE = "10.10.2026"
 AUTHOR = "@Fazbear_r"
 
-# ====== ЗАГРУЗКА СЕКРЕТОВ ======
-try:
-    from secrets import (
-        BOT_TOKEN,
-        ADMINS,
-        ADMIN_SECRET_CODE,
-        ADMIN_SESSION_HOURS,
-        URL_SHORTENER_SERVICE,
-        CUTTLY_API_KEY,
-        MEDIA_DOWNLOADER_ENABLED,
-        MAX_DOWNLOAD_SIZE_MB,
-        MAX_DOWNLOADS_PER_USER_PER_DAY,
-        IP_INFO_API_SERVICE,
-        IPINFO_API_KEY,
-        GROQ_API_KEY,
-        CHEAPSHARK_API_KEY,
-        LOG_RETENTION_DAYS,
-        LOG_LEVEL
-    )
-except ImportError:
-    print("⚠️ WARNING: secrets.py not found! Using fallback values.")
-    BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-    ADMINS = [123456789]
-    ADMIN_SECRET_CODE = "фазбер"
-    ADMIN_SESSION_HOURS = 24
-    URL_SHORTENER_SERVICE = "tinyurl"
-    CUTTLY_API_KEY = ""
-    MEDIA_DOWNLOADER_ENABLED = False
-    MAX_DOWNLOAD_SIZE_MB = 50
-    MAX_DOWNLOADS_PER_USER_PER_DAY = 10
-    IP_INFO_API_SERVICE = "ipapi"
-    IPINFO_API_KEY = ""
-    GROQ_API_KEY = ""
-    CHEAPSHARK_API_KEY = ""
-    LOG_RETENTION_DAYS = 30
-    LOG_LEVEL = "INFO"
+_settings = load_settings()
 
-# ====== НАСТРОЙКИ РЕЗЕРВНОГО КОПИРОВАНИЯ ======
-BACKUP_ENABLED = True
-BACKUP_TIME = "03:00"
-BACKUP_RETENTION_COUNT = 7
-BACKUP_RETENTION_DAYS = 30
+BOT_TOKEN = _settings.bot_token
+ADMINS = list(_settings.admins)
+ADMIN_SECRET_CODE = _settings.admin_secret_code
+ADMIN_SESSION_HOURS = _settings.admin_session_hours
+URL_SHORTENER_SERVICE = _settings.url_shortener_service
+CUTTLY_API_KEY = _settings.cuttly_api_key
+MEDIA_DOWNLOADER_ENABLED = _settings.media_downloader_enabled
+MAX_DOWNLOAD_SIZE_MB = _settings.max_download_size_mb
+MAX_DOWNLOADS_PER_USER_PER_DAY = _settings.max_downloads_per_user_per_day
+IP_INFO_API_SERVICE = _settings.ip_info_api_service
+IPINFO_API_KEY = _settings.ipinfo_api_key
+GROQ_API_KEY = _settings.groq_api_key
+CHEAPSHARK_API_KEY = _settings.cheapshark_api_key
+LOG_RETENTION_DAYS = _settings.log_retention_days
+LOG_LEVEL = _settings.log_level
+BACKUP_ENABLED = _settings.backup_enabled
+BACKUP_TIME = _settings.backup_time
+BACKUP_RETENTION_COUNT = _settings.backup_retention_count
+BACKUP_RETENTION_DAYS = _settings.backup_retention_days
+BLOCKED_USERS = list(_settings.blocked_users)
 
-# ====== НАСТРОЙКИ БЛОКИРОВКИ ======
-BLOCKED_USERS = []
-
-# ====== ГЛОБАЛЬНЫЕ НАСТРОЙКИ ======
 ALLOWED_SYMBOLS = "0123456789 .,!?;:'\"-()[]{}@#$%&*+=/\\|<>«»„"
 
 
-# ====== ПРОВЕРКА СЕКРЕТОВ ======
-def validate_secrets():
-    """Проверка наличия необходимых секретов"""
-    errors = []
+def validate_config() -> bool:
+    """Return whether the current environment can start the Telegram bot."""
 
-    if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-        errors.append("❌ BOT_TOKEN не настроен в secrets.py")
+    return not _settings.startup_errors()
 
-    if errors:
-        print("\n⚠️ ОШИБКИ КОНФИГУРАЦИИ:")
-        for error in errors:
-            print(error)
-        print("\n📝 Скопируйте secrets.template.py в secrets.py и заполните значения!\n")
-        return False
 
-    print("✅ Все секреты настроены корректно")
-    return True
+def require_valid_config() -> None:
+    """Raise a concise error when required runtime settings are missing."""
+
+    _settings.require_startup_ready()
+
+
+def validate_secrets() -> bool:
+    """Deprecated compatibility alias for old callers."""
+
+    return validate_config()

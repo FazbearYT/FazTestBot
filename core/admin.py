@@ -40,6 +40,8 @@ class AdminManager:
 
     def authenticate_by_code(self, user_id: int, code: str) -> bool:
         """Аутентификация через секретное кодовое слово"""
+        if not ADMIN_SECRET_CODE:
+            return False
         if code.strip() == ADMIN_SECRET_CODE:
             expires = datetime.now() + timedelta(hours=ADMIN_SESSION_HOURS)
             self.admin_sessions[user_id] = {'until': expires}

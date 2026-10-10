@@ -417,7 +417,7 @@ def register_global_handlers(bot):
                          "Текущие параметры:\n"
                          f"• Автоочистка логов: {config.LOG_RETENTION_DAYS} дней\n"
                          f"• Длительность сессии админа: {config.ADMIN_SESSION_HOURS} часов\n\n"
-                         "<i>Настройки можно изменить в файле config.py</i>",
+                         "<i>Настройки можно изменить в файле .env</i>",
                     reply_markup=user_search_keyboard(),
                     parse_mode="HTML"
                 )
