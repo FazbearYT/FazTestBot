@@ -222,9 +222,18 @@ class DatabaseMigrator:
                 """
             )
 
-    def _applied_versions(self) -> set[str]:
-        self._ensure_migration_table()
-        with self.database.connection() as connection:
+    def _read_applied_versions(self) -> set[str]:
+        if not self.db_path.is_file():
+            return set()
+        with self.database.connection(read_only=True) as connection:
+            table_exists = connection.execute(
+                """
+                SELECT 1 FROM sqlite_master
+                WHERE type = 'table' AND name = 'migrations'
+                """
+            ).fetchone()
+            if table_exists is None:
+                return set()
             rows = connection.execute("SELECT version FROM migrations").fetchall()
         applied = {row[0] for row in rows}
         known = {migration.version for migration in self.migrations}
@@ -234,8 +243,18 @@ class DatabaseMigrator:
             raise MigrationError(f"database contains unknown migration versions: {versions}")
         return applied
 
+    def _applied_versions(self) -> set[str]:
+        self._ensure_migration_table()
+        return self._read_applied_versions()
+
+    def pending_versions(self) -> list[str]:
+        applied = self._read_applied_versions()
+        return [
+            migration.version for migration in self.migrations if migration.version not in applied
+        ]
+
     def get_current_version(self) -> str:
-        applied = self._applied_versions()
+        applied = self._read_applied_versions()
         current = "0"
         for migration in self.migrations:
             if migration.version in applied:

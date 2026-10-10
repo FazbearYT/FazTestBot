@@ -53,8 +53,15 @@ class SQLiteDatabase:
         return connection
 
     @contextmanager
-    def connection(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
-        connection = self.connect()
+    def connection(
+        self,
+        *,
+        write: bool = False,
+        read_only: bool = False,
+    ) -> Iterator[sqlite3.Connection]:
+        if write and read_only:
+            raise ValueError("a connection cannot be both writable and read-only")
+        connection = self.connect(read_only=read_only)
         try:
             yield connection
             if write:
@@ -74,7 +81,7 @@ class SQLiteDatabase:
             raise DatabaseIntegrityError(f"SQLite integrity check failed: {detail}")
 
     def validate(self) -> None:
-        with self.connection() as connection:
+        with self.connection(read_only=True) as connection:
             self.check_integrity(connection)
 
     def backup_to(self, destination: str | Path) -> Path:
@@ -91,7 +98,10 @@ class SQLiteDatabase:
         temporary_path = Path(temporary_name)
 
         try:
-            with self.connection() as source, closing(sqlite3.connect(temporary_path)) as target:
+            with (
+                self.connection(read_only=True) as source,
+                closing(sqlite3.connect(temporary_path)) as target,
+            ):
                 source.backup(target)
                 self.check_integrity(target)
             os.replace(temporary_path, destination)
@@ -104,7 +114,7 @@ class SQLiteDatabase:
         """Validate and atomically restore through SQLite's Online Backup API."""
 
         source_database = SQLiteDatabase(source, busy_timeout_ms=self.busy_timeout_ms)
-        with source_database.connection() as source_connection:
+        with source_database.connection(read_only=True) as source_connection:
             self.check_integrity(source_connection)
             with self.connection() as target_connection:
                 source_connection.backup(target_connection)

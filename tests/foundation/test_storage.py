@@ -67,3 +67,15 @@ class SQLiteDatabaseTests(unittest.TestCase):
 
         with self.assertRaises((DatabaseIntegrityError, sqlite3.DatabaseError)):
             SQLiteDatabase(broken).validate()
+
+    def test_read_only_connection_rejects_writes(self):
+        with self.database.connection(write=True) as connection:
+            connection.execute("CREATE TABLE marker (value TEXT)")
+
+        with self.database.connection(read_only=True) as connection:
+            with self.assertRaises(sqlite3.OperationalError):
+                connection.execute("INSERT INTO marker VALUES ('forbidden')")
+
+        with self.assertRaisesRegex(ValueError, "both writable and read-only"):
+            with self.database.connection(write=True, read_only=True):
+                pass

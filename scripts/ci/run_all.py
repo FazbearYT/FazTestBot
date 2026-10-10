@@ -36,6 +36,7 @@ def main() -> int:
         "ruff",
         "check",
         "core/backup.py",
+        "core/bootstrap.py",
         "core/database.py",
         "core/migrations.py",
         "core/module_manager.py",
@@ -44,6 +45,7 @@ def main() -> int:
         "bot.py",
         "config.py",
         "scripts/doctor.py",
+        "scripts/database.py",
         "scripts/ci",
         "tests",
     )
@@ -54,6 +56,7 @@ def main() -> int:
         "format",
         "--check",
         "core/backup.py",
+        "core/bootstrap.py",
         "core/database.py",
         "core/migrations.py",
         "core/module_manager.py",
@@ -62,6 +65,7 @@ def main() -> int:
         "bot.py",
         "config.py",
         "scripts/doctor.py",
+        "scripts/database.py",
         "scripts/ci",
         "tests",
     )

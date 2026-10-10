@@ -65,9 +65,9 @@ def build_runtime(
     settings.require_startup_ready()
 
     if migrate_database is None:
-        from core.migrations import DatabaseMigrator
+        from core.bootstrap import migrate_database_safely
 
-        migrate_database = DatabaseMigrator().apply_migrations
+        migrate_database = migrate_database_safely
     migrate_database()
 
     # Heavy imports are deliberately delayed until validation has succeeded.
