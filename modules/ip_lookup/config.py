@@ -16,7 +16,7 @@ TABLE_NAME = "ip_lookup_logs"
 
 # ====== ПОДДЕРЖИВАЕМЫЕ ТИПЫ ЗАПРОСОВ ======
 SUPPORTED_QUERY_TYPES = [
-    "ipv4",      # IPv4 адреса
-    "ipv6",      # IPv6 адреса
-    "domain"     # Доменные имена (WHOIS)
+    "ipv4",  # IPv4 адреса
+    "ipv6",  # IPv6 адреса
+    "domain",  # Доменные имена (WHOIS)
 ]
