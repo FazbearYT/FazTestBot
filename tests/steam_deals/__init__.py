@@ -1,0 +1,1 @@
+"""Steam Deals module tests."""

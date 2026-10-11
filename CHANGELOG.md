@@ -3,6 +3,23 @@
 This file records technical changes relevant to maintainers and release operators.
 User-visible history remains available in `history.txt`.
 
+## [Unreleased]
+
+### Fixed
+
+- Non-text Telegram updates no longer crash the Easter egg fallback handler.
+- Media Downloader now reports its deliberate disabled state consistently and
+  cannot be enabled accidentally through environment configuration.
+
+### Quality
+
+- Removed the unreachable legacy media download engine and its unused network
+  dependencies instead of shipping an unbounded, untested file-processing path.
+- Added an isolated Media Downloader test suite and mandatory module-scoped Ruff
+  checks, and expanded repository quality coverage to every core Python module.
+- Promoted Steam Deals out of the legacy CI exception list; its owned API-client
+  tests and the complete module now run under the mandatory module quality gate.
+
 ## [5.0.0] - 2026-10-11
 
 ### Changed
@@ -41,3 +58,4 @@ User-visible history remains available in `history.txt`.
   by proof that the tagged commit belongs to `master` history.
 
 [5.0.0]: https://github.com/FazbearYT/FazTestBot/compare/v4.5.0...v5.0.0
+[Unreleased]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.0...develop

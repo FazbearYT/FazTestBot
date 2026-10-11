@@ -3,5 +3,4 @@
 cipher
 decision_maker
 ip_lookup
-steam_deals
 url_shortener
