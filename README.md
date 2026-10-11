@@ -49,3 +49,10 @@ restore are documented in [docs/admin-panel.md](docs/admin-panel.md).
 
 External HTTP resilience and transient interaction-state conventions are documented
 in [docs/networking.md](docs/networking.md).
+
+## Releases
+
+The application version is declared once in `core/version.py`. Release metadata,
+source archives, checksums, and tag publication are validated automatically. See
+[CHANGELOG.md](CHANGELOG.md) for technical changes and [docs/releases.md](docs/releases.md)
+for the promotion procedure from `develop` to `master`.
