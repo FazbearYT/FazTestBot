@@ -25,6 +25,7 @@ LINT_TARGETS = (
     "core/process_lock.py",
     "core/settings.py",
     "core/storage.py",
+    "modules/ip_lookup/api_client.py",
     "modules/url_shortener/api_client.py",
     "bot.py",
     "config.py",
