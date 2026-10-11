@@ -16,6 +16,7 @@ LINT_TARGETS = (
     "core/exceptions.py",
     "core/handlers.py",
     "core/health.py",
+    "core/http_client.py",
     "core/keyboards.py",
     "core/migrations.py",
     "core/module_base.py",
