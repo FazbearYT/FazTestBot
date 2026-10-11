@@ -18,7 +18,7 @@ class QualityTargetsTests(unittest.TestCase):
         expected = {
             "modules/cipher/handlers.py",
             "modules/decision_maker/handlers.py",
-            "modules/media_downloader/handlers.py",
+            "modules/media_downloader",
             "modules/steam_deals/handlers.py",
         }
         self.assertTrue(expected <= set(LINT_TARGETS))

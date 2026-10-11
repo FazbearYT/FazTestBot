@@ -30,7 +30,7 @@ LINT_TARGETS = (
     "modules/cipher/handlers.py",
     "modules/decision_maker/handlers.py",
     "modules/ip_lookup/api_client.py",
-    "modules/media_downloader/handlers.py",
+    "modules/media_downloader",
     "modules/steam_deals/api_client.py",
     "modules/steam_deals/handlers.py",
     "modules/url_shortener/api_client.py",
