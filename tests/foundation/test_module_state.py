@@ -1,9 +1,11 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from core.module_base import BaseModule
 from core.state import InteractionScope, TransientStateStore
 from modules.ip_lookup.handlers import IPLookupModule
+from modules.steam_deals.handlers import SteamDealsModule
 from modules.url_shortener.handlers import URLShortenerModule
 
 
@@ -58,6 +60,47 @@ class ModuleStateTests(unittest.TestCase):
                 self.assertEqual(1, module.get_interaction_state(10, -100, "message_id"))
                 self.assertEqual(2, module.get_interaction_state(20, -100, "message_id"))
                 self.assertEqual(2, module.get_admin_snapshot().active_state_count)
+
+    def test_steam_entry_state_is_isolated_by_actor_in_shared_chat(self):
+        bot = SimpleNamespace(edit_message_text=lambda **_kwargs: None)
+        module = SteamDealsModule("steam", "Steam", "Description", "🎮", "1.0.0", "steam_")
+
+        module.handle_entry(bot, self._callback(actor_id=10, chat_id=-100, message_id=1))
+        module.handle_entry(bot, self._callback(actor_id=20, chat_id=-100, message_id=2))
+
+        self.assertEqual(1, module.get_interaction_state(10, -100, "message_id"))
+        self.assertEqual(2, module.get_interaction_state(20, -100, "message_id"))
+
+    def test_steam_personal_wishlist_is_rejected_in_shared_chat(self):
+        bot = MagicMock()
+        module = SteamDealsModule("steam", "Steam", "Description", "🎮", "1.0.0", "steam_")
+        call = self._callback(actor_id=10, chat_id=-100, message_id=1)
+        call.id = "callback"
+        call.data = "steam_wishlist"
+        call.message.chat.type = "group"
+
+        with patch.object(module, "_show_wishlist") as show_wishlist:
+            module.handle_callback(bot, call)
+
+        show_wishlist.assert_not_called()
+        bot.answer_callback_query.assert_any_call(
+            "callback",
+            "Личный вишлист доступен только в приватном чате с ботом.",
+            show_alert=True,
+        )
+
+    def test_steam_wishlist_uses_actor_identity_in_private_chat(self):
+        bot = MagicMock()
+        module = SteamDealsModule("steam", "Steam", "Description", "🎮", "1.0.0", "steam_")
+        call = self._callback(actor_id=10, chat_id=10, message_id=7)
+        call.id = "callback"
+        call.data = "steam_wishlist"
+        call.message.chat.type = "private"
+
+        with patch.object(module, "_show_wishlist") as show_wishlist:
+            module.handle_callback(bot, call)
+
+        show_wishlist.assert_called_once_with(bot, 10, 10, 7)
 
     @staticmethod
     def _callback(*, actor_id, chat_id, message_id):

@@ -27,6 +27,7 @@ LINT_TARGETS = (
     "core/state.py",
     "core/storage.py",
     "modules/ip_lookup/api_client.py",
+    "modules/steam_deals/api_client.py",
     "modules/url_shortener/api_client.py",
     "bot.py",
     "config.py",
