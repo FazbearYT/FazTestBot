@@ -24,6 +24,7 @@ LINT_TARGETS = (
     "core/observability.py",
     "core/process_lock.py",
     "core/settings.py",
+    "core/state.py",
     "core/storage.py",
     "modules/ip_lookup/api_client.py",
     "modules/url_shortener/api_client.py",

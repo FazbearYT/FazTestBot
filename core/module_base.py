@@ -7,6 +7,8 @@ from typing import Any
 
 from telebot import types
 
+from core.state import InteractionScope, TransientStateStore
+
 
 @dataclass(frozen=True, slots=True)
 class ModuleMetric:
@@ -49,6 +51,7 @@ class BaseModule(ABC):
         icon: str,
         version: str = "1.0.0",
         callback_prefix: str | None = None,
+        state_store: TransientStateStore | None = None,
     ):
         """
         Инициализация базового модуля.
@@ -66,7 +69,7 @@ class BaseModule(ABC):
         self.icon = icon
         self.version = version
         self.callback_prefix = callback_prefix or f"{module_id}_"
-        self.user_state: dict[int, dict[str, Any]] = {}  # Состояния пользователей {user_id: state}
+        self._state_store = state_store or TransientStateStore()
 
     @abstractmethod
     def handle_entry(self, bot: Any, call: Any) -> None:
@@ -111,8 +114,7 @@ class BaseModule(ABC):
 
         :param user_id: ID пользователя в Telegram
         """
-        if user_id in self.user_state:
-            del self.user_state[user_id]
+        self.cleanup_interaction_state(user_id, user_id)
 
     def get_user_state(self, user_id: int, key: str | None = None, default: Any = None) -> Any:
         """
@@ -123,13 +125,10 @@ class BaseModule(ABC):
         :param default: Значение по умолчанию если ключ не найден
         :return: Значение состояния или default
         """
-        if user_id not in self.user_state:
-            self.user_state[user_id] = {}
-
         if key is None:
-            return self.user_state[user_id]
+            return self._state_store.get_all(InteractionScope(user_id, user_id))
 
-        return self.user_state[user_id].get(key, default)
+        return self.get_interaction_state(user_id, user_id, key, default)
 
     def set_user_state(self, user_id: int, key: str, value: Any) -> None:
         """
@@ -139,10 +138,34 @@ class BaseModule(ABC):
         :param key: Ключ состояния
         :param value: Значение для сохранения
         """
-        if user_id not in self.user_state:
-            self.user_state[user_id] = {}
+        self.set_interaction_state(user_id, user_id, key, value)
 
-        self.user_state[user_id][key] = value
+    def get_interaction_state(
+        self,
+        actor_id: int,
+        chat_id: int,
+        key: str,
+        default: Any = None,
+    ) -> Any:
+        """Read state isolated by both Telegram actor and chat."""
+
+        return self._state_store.get(InteractionScope(actor_id, chat_id), key, default)
+
+    def set_interaction_state(
+        self,
+        actor_id: int,
+        chat_id: int,
+        key: str,
+        value: Any,
+    ) -> None:
+        """Store state isolated by both Telegram actor and chat."""
+
+        self._state_store.set(InteractionScope(actor_id, chat_id), key, value)
+
+    def cleanup_interaction_state(self, actor_id: int, chat_id: int) -> None:
+        """Remove all transient state for one actor/chat interaction."""
+
+        self._state_store.clear(InteractionScope(actor_id, chat_id))
 
     def on_load(self, bot: Any) -> None:
         """
@@ -176,7 +199,7 @@ class BaseModule(ABC):
             callback_prefix=self.callback_prefix,
             status="ok",
             summary="module loaded",
-            active_state_count=len(self.user_state),
+            active_state_count=self._state_store.count(),
         )
 
     def validate(self) -> tuple:
