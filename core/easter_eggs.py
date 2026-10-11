@@ -26,7 +26,7 @@ class EasterEggManager:
         from config import BLOCKED_USERS
         return user_id in BLOCKED_USERS
 
-    def process_easter_egg_message(self, user_id: int, message_text: str) -> Dict:
+    def process_easter_egg_message(self, user_id: int, message_text: str | None) -> Dict:
         """
         Обработка сообщения на предмет пасхалки-головоломки
 
@@ -62,7 +62,7 @@ class EasterEggManager:
                 }
 
         current_step = user_state.get('current_step', 0)
-        message_text = message_text.strip()
+        message_text = (message_text or "").strip()
 
         # Проверяем соответствие последовательности
         if current_step < len(self.puzzle_sequence):
