@@ -67,6 +67,18 @@ class SteamDealsClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], list(self.cache_path.parent.glob("*.tmp")))
         self.assertIsInstance(json.loads(self.cache_path.read_text(encoding="utf-8")), dict)
 
+    def test_cache_invalidation_removes_value_and_timestamp_from_disk(self):
+        client = self.client()
+        client.cache["free_games"] = [{"name": "Game", "app_id": "10"}]
+        client.cache_timestamp["free_games"] = self.now.isoformat()
+        client._save_cache()
+
+        client.invalidate_cache("free_games")
+
+        reloaded = self.client()
+        self.assertNotIn("free_games", reloaded.cache)
+        self.assertNotIn("free_games", reloaded.cache_timestamp)
+
     def test_invalid_and_expired_cache_timestamps_are_rejected(self):
         client = self.client()
         client.cache_timestamp["bad"] = "not-a-date"

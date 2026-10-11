@@ -132,6 +132,14 @@ class SteamDealsClient:
             return False
         return 0 <= age < ttl
 
+    def invalidate_cache(self, key: str) -> None:
+        """Remove one cached provider result without exposing mutable internals."""
+
+        with self._cache_lock:
+            self.cache.pop(key, None)
+            self.cache_timestamp.pop(key, None)
+        self._save_cache()
+
     async def ensure_rate(self) -> float:
         if self._is_cache_valid("fx_rate", EXCHANGE_RATE_TTL_SECONDS):
             return self.kzt_to_rub
