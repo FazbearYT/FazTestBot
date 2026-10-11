@@ -1,7 +1,7 @@
-pyTelegramBotAPI>=4.10.0
-qrcode[pil]>=7.4.0
-APScheduler>=3.10.0
-python-dotenv>=1.0.0
-aiohttp>=3.11.5
-yt-dlp>=2026.2.21
+pyTelegramBotAPI>=4.37.0
+qrcode[pil]>=8.2
+APScheduler>=3.11.3
+python-dotenv>=1.2.4
+aiohttp>=3.14.4
+yt-dlp>=2026.8.19
 pytube>=15.0.0  # Fallback для YouTube
