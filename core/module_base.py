@@ -167,6 +167,21 @@ class BaseModule(ABC):
 
         self._state_store.clear(InteractionScope(actor_id, chat_id))
 
+    @staticmethod
+    def require_private_chat(
+        bot: Any,
+        call: Any,
+        *,
+        message: str = "Эта операция доступна только в приватном чате с ботом.",
+    ) -> bool:
+        """Reject actor-specific workflows whose next-step handler is chat-scoped."""
+
+        chat = getattr(getattr(call, "message", None), "chat", None)
+        if getattr(chat, "type", None) == "private":
+            return True
+        bot.answer_callback_query(call.id, message, show_alert=True)
+        return False
+
     def on_load(self, bot: Any) -> None:
         """
         ОПЦИОНАЛЬНО: Вызывается при загрузке модуля.
