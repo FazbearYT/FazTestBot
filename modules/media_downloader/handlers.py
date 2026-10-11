@@ -5,11 +5,14 @@ from telebot import types
 from typing import Any
 from core.module_base import BaseModule
 from core.database import DatabaseManager
+from core.exceptions import handle_exception
+from core.observability import event_fields, get_logger
 from .keyboards import (
     media_downloader_menu_keyboard,
 )
 
 db = DatabaseManager()
+logger = get_logger(__name__)
 
 
 class MediaDownloaderModule(BaseModule):
@@ -17,10 +20,11 @@ class MediaDownloaderModule(BaseModule):
 
     def handle_entry(self, bot: Any, call: Any) -> None:
         """Вход в модуль - ЗАГЛУШКА"""
+        actor_id = call.from_user.id
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
-        self.set_user_state(chat_id, 'message_id', message_id)
+        self.set_interaction_state(actor_id, chat_id, 'message_id', message_id)
 
         # Создаём клавиатуру с кнопкой возврата
         kb = types.InlineKeyboardMarkup(row_width=1)
@@ -46,6 +50,7 @@ class MediaDownloaderModule(BaseModule):
 
     def handle_callback(self, bot: Any, call: Any) -> None:
         """Обработка колбэков - ЗАГЛУШКА"""
+        actor_id = call.from_user.id
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
@@ -72,7 +77,7 @@ class MediaDownloaderModule(BaseModule):
                     reply_markup=kb,
                     parse_mode="HTML"
                 )
-                self.cleanup_user_state(chat_id)
+                self.cleanup_interaction_state(actor_id, chat_id)
                 return
 
             # Назад в меню
@@ -106,8 +111,14 @@ class MediaDownloaderModule(BaseModule):
                 )
                 return
 
-        except Exception as e:
-            bot.answer_callback_query(call.id, f"Ошибка: {str(e)[:60]}", show_alert=True)
+        except Exception as exc:
+            handle_exception(
+                exc,
+                logger,
+                event="media.callback_failed",
+                context={"actor_id": actor_id, "chat_id": chat_id},
+            )
+            bot.answer_callback_query(call.id, "Сервис временно недоступен.", show_alert=True)
 
     def get_menu_keyboard(self) -> types.InlineKeyboardMarkup:
         """Клавиатура меню"""
@@ -148,10 +159,14 @@ class MediaDownloaderModule(BaseModule):
 
     def on_load(self, bot: Any) -> None:
         """Загрузка модуля"""
-        print(f"⚠️ Media Downloader v4.1.1 - МОДУЛЬ ОТКЛЮЧЁН")
-        print(f"   Причина: Технические сложности (pytubefix, adaptive streams)")
-        print(f"   Статус: Отправлен в долгий ящик")
+        logger.warning(
+            "disabled module loaded",
+            extra=event_fields("media.module_loaded_disabled", version=self.version),
+        )
 
     def on_unload(self, bot: Any) -> None:
         """Выгрузка модуля"""
-        print(f"📥 Media Downloader выгружен")
+        logger.info(
+            "module unloaded",
+            extra=event_fields("media.module_unloaded", version=self.version),
+        )

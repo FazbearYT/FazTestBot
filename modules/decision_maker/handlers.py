@@ -2,12 +2,16 @@
 # Обработчики модуля "Decision Maker"
 # Версия: 4.3.2
 
+import html
 import random
 from datetime import datetime, timedelta
 from telebot import types
+from telebot.apihelper import ApiTelegramException
 from typing import Any
 from core.module_base import BaseModule
 from core.database import DatabaseManager
+from core.exceptions import handle_exception
+from core.observability import event_fields, get_logger
 from .keyboards import (
     decision_maker_menu_keyboard,
     number_range_keyboard,
@@ -28,6 +32,7 @@ from .config import (
     DEFAULT_MAX
 )
 db = DatabaseManager()
+logger = get_logger(__name__)
 
 
 class DecisionMakerModule(BaseModule):
@@ -43,6 +48,13 @@ class DecisionMakerModule(BaseModule):
 
     def handle_entry(self, bot: Any, call: Any) -> None:
         """Вход в модуль"""
+        if not self.require_private_chat(
+            bot,
+            call,
+            message="Decision Maker доступен только в приватном чате с ботом.",
+        ):
+            return
+
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
@@ -65,6 +77,13 @@ class DecisionMakerModule(BaseModule):
 
     def handle_callback(self, bot: Any, call: Any) -> None:
         """Обработка колбэков"""
+        if not self.require_private_chat(
+            bot,
+            call,
+            message="Decision Maker доступен только в приватном чате с ботом.",
+        ):
+            return
+
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
@@ -405,7 +424,8 @@ class DecisionMakerModule(BaseModule):
                         result = random.choice(items)
 
                         # Формируем сообщение
-                        items_text = ", ".join(items[:10])
+                        items_text = ", ".join(html.escape(item) for item in items[:10])
+                        safe_result = html.escape(result)
                         if len(items) > 10:
                             items_text += f" ... и ещё {len(items) - 10}"
 
@@ -415,7 +435,7 @@ class DecisionMakerModule(BaseModule):
                             text=f"📝 <b>Выбор из списка</b>\n\n"
                                  f"Варианты ({len(items)}): {items_text}\n\n"
                                  f"🎲 <b>Результат:</b>\n"
-                                 f"<b>{result}</b>",
+                                 f"<b>{safe_result}</b>",
                             reply_markup=result_keyboard("dm_list"),
                             parse_mode="HTML"
                         )
@@ -435,10 +455,16 @@ class DecisionMakerModule(BaseModule):
                     )
                 return
 
-        except Exception as e:
+        except Exception as exc:
+            handle_exception(
+                exc,
+                logger,
+                event="decision.callback_failed",
+                context={"chat_id": chat_id},
+            )
             bot.answer_callback_query(
                 call.id,
-                f"Ошибка: {str(e)[:60]}",
+                "Сервис временно недоступен.",
                 show_alert=True
             )
 
@@ -478,8 +504,12 @@ class DecisionMakerModule(BaseModule):
             # Удаляем сообщение пользователя
             try:
                 bot.delete_message(chat_id, message.message_id)
-            except:
-                pass
+            except ApiTelegramException as exc:
+                logger.info(
+                    "%s",
+                    type(exc).__name__,
+                    extra=event_fields("decision.message_delete_skipped", chat_id=chat_id),
+                )
 
             # Парсим список
             items = [item.strip() for item in text.split(',') if item.strip()]
@@ -554,7 +584,8 @@ class DecisionMakerModule(BaseModule):
             self._log_action(chat_id, 'list_choice', result, f"{len(items)} items")
 
             # Формируем сообщение
-            items_text = ", ".join(items[:10])
+            items_text = ", ".join(html.escape(item) for item in items[:10])
+            safe_result = html.escape(result)
             if len(items) > 10:
                 items_text += f" ... и ещё {len(items) - 10}"
 
@@ -565,7 +596,7 @@ class DecisionMakerModule(BaseModule):
                     text=f"📝 <b>Выбор из списка</b>\n\n"
                          f"Варианты ({len(items)}): {items_text}\n\n"
                          f"🎲 <b>Результат:</b>\n"
-                         f"<b>{result}</b>",
+                         f"<b>{safe_result}</b>",
                     reply_markup=result_keyboard("dm_list"),
                     parse_mode="HTML"
                 )
@@ -575,12 +606,18 @@ class DecisionMakerModule(BaseModule):
                     f"📝 <b>Выбор из списка</b>\n\n"
                     f"Варианты ({len(items)}): {items_text}\n\n"
                     f"🎲 <b>Результат:</b>\n"
-                    f"<b>{result}</b>",
+                    f"<b>{safe_result}</b>",
                     reply_markup=result_keyboard("dm_list"),
                     parse_mode="HTML"
                 )
 
-        except Exception as e:
+        except Exception as exc:
+            handle_exception(
+                exc,
+                logger,
+                event="decision.list_input_failed",
+                context={"chat_id": chat_id},
+            )
             # Получаем message_id для редактирования
             message_id = self.get_user_state(chat_id, 'message_id')
 
@@ -588,14 +625,14 @@ class DecisionMakerModule(BaseModule):
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"❌ Ошибка: {str(e)[:100]}",
+                    text="❌ Сервис временно недоступен.",
                     reply_markup=list_options_keyboard(),
                     parse_mode="HTML"
                 )
             else:
                 bot.send_message(
                     chat_id,
-                    f"❌ Ошибка: {str(e)[:100]}",
+                    "❌ Сервис временно недоступен.",
                     reply_markup=list_options_keyboard(),
                     parse_mode="HTML"
                 )
@@ -611,8 +648,12 @@ class DecisionMakerModule(BaseModule):
             # Удаляем сообщение пользователя
             try:
                 bot.delete_message(chat_id, message.message_id)
-            except:
-                pass
+            except ApiTelegramException as exc:
+                logger.info(
+                    "%s",
+                    type(exc).__name__,
+                    extra=event_fields("decision.message_delete_skipped", chat_id=chat_id),
+                )
 
             # Парсим диапазон
             text = message.text.strip()
@@ -722,20 +763,26 @@ class DecisionMakerModule(BaseModule):
                     reply_markup=number_range_keyboard(),
                     parse_mode="HTML"
                 )
-        except Exception as e:
+        except Exception as exc:
+            handle_exception(
+                exc,
+                logger,
+                event="decision.range_input_failed",
+                context={"chat_id": chat_id},
+            )
             message_id = self.get_user_state(chat_id, 'message_id')
             if message_id:
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"❌ Ошибка: {str(e)[:100]}",
+                    text="❌ Сервис временно недоступен.",
                     reply_markup=number_range_keyboard(),
                     parse_mode="HTML"
                 )
             else:
                 bot.send_message(
                     chat_id,
-                    f"❌ Ошибка: {str(e)[:100]}",
+                    "❌ Сервис временно недоступен.",
                     reply_markup=number_range_keyboard(),
                     parse_mode="HTML"
                 )
@@ -751,8 +798,13 @@ class DecisionMakerModule(BaseModule):
                     """,
                     (user_id, action_type, result, details[:200]),
                 )
-        except Exception as e:
-            print(f"⚠️ Ошибка логирования: {str(e)}")
+        except Exception as exc:
+            handle_exception(
+                exc,
+                logger,
+                event="decision.action_log_failed",
+                context={"user_id": user_id, "action_type": action_type},
+            )
 
     def _update_coin_stats(self, user_id: int, result: str):
         """Обновление статистики монетки"""
@@ -774,8 +826,13 @@ class DecisionMakerModule(BaseModule):
                     """,
                     (user_id, heads, tails, 1),
                 )
-        except Exception as e:
-            print(f"⚠️ Ошибка обновления статистики: {str(e)}")
+        except Exception as exc:
+            handle_exception(
+                exc,
+                logger,
+                event="decision.coin_stats_update_failed",
+                context={"user_id": user_id},
+            )
 
     def _get_coin_stats(self, user_id: int) -> dict:
         """Получение статистики монетки"""
@@ -803,13 +860,25 @@ class DecisionMakerModule(BaseModule):
                     'tails_percent': tails_percent
                 }
             return None
-        except:
+        except Exception as exc:
+            handle_exception(
+                exc,
+                logger,
+                event="decision.coin_stats_read_failed",
+                context={"user_id": user_id},
+            )
             return None
 
     def on_load(self, bot: Any) -> None:
         """Загрузка модуля"""
-        print(f"🎲 Модуль Decision Maker v{self.version} загружен")
+        logger.info(
+            "module loaded",
+            extra=event_fields("decision.module_loaded", version=self.version),
+        )
 
     def on_unload(self, bot: Any) -> None:
         """Выгрузка модуля"""
-        print(f"🎲 Модуль Decision Maker v{self.version} выгружен")
+        logger.info(
+            "module unloaded",
+            extra=event_fields("decision.module_unloaded", version=self.version),
+        )

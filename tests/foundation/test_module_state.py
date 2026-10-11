@@ -4,7 +4,10 @@ from unittest.mock import MagicMock, patch
 
 from core.module_base import BaseModule
 from core.state import InteractionScope, TransientStateStore
+from modules.cipher.handlers import CipherModule
+from modules.decision_maker.handlers import DecisionMakerModule
 from modules.ip_lookup.handlers import IPLookupModule
+from modules.media_downloader.handlers import MediaDownloaderModule
 from modules.steam_deals.handlers import SteamDealsModule
 from modules.url_shortener.handlers import URLShortenerModule
 
@@ -46,7 +49,7 @@ class ModuleStateTests(unittest.TestCase):
 
     def test_network_modules_bind_entry_state_to_actor_and_chat(self):
         bot = SimpleNamespace(edit_message_text=lambda **_kwargs: None)
-        module_types = (IPLookupModule, URLShortenerModule)
+        module_types = (IPLookupModule, MediaDownloaderModule, URLShortenerModule)
 
         for module_type in module_types:
             with self.subTest(module=module_type.__name__):
@@ -102,12 +105,79 @@ class ModuleStateTests(unittest.TestCase):
 
         show_wishlist.assert_called_once_with(bot, 10, 10, 7)
 
+    def test_chat_scoped_legacy_workflows_reject_shared_chats(self):
+        module_types = (CipherModule, DecisionMakerModule)
+
+        for module_type in module_types:
+            with self.subTest(module=module_type.__name__):
+                bot = MagicMock()
+                module = module_type("legacy", "Legacy", "Description", "🧪", "1.0.0", "legacy_")
+                call = self._callback(
+                    actor_id=10,
+                    chat_id=-100,
+                    message_id=1,
+                    chat_type="group",
+                )
+                call.id = "callback"
+                call.data = "legacy_action"
+
+                module.handle_entry(bot, call)
+                module.handle_callback(bot, call)
+
+                self.assertEqual(0, module.get_admin_snapshot().active_state_count)
+                bot.edit_message_text.assert_not_called()
+                self.assertEqual(2, bot.answer_callback_query.call_count)
+                for invoked in bot.answer_callback_query.call_args_list:
+                    self.assertTrue(invoked.kwargs["show_alert"])
+
+    def test_cipher_escapes_user_text_before_html_rendering(self):
+        bot = MagicMock()
+        module = CipherModule("cipher", "Cipher", "Description", "🔐", "1.0.0", "cipher_")
+        module.set_user_state(10, "message_id", 7)
+        module.set_user_state(10, "session_id", "session")
+        module.set_user_state(10, "cipher", "morze")
+        message = SimpleNamespace(
+            from_user=SimpleNamespace(id=10),
+            chat=SimpleNamespace(id=10, type="private"),
+            message_id=8,
+            text="<b>unsafe</b>",
+        )
+
+        with patch("modules.cipher.handlers.db.log_cipher_operation"):
+            module._process_text_input(message, bot)
+
+        rendered = bot.edit_message_text.call_args.kwargs["text"]
+        self.assertIn("&lt;b&gt;unsafe&lt;/b&gt;", rendered)
+        self.assertNotIn("<code><b>unsafe</b></code>", rendered)
+
+    def test_decision_list_escapes_user_values_before_html_rendering(self):
+        bot = MagicMock()
+        module = DecisionMakerModule("decision", "Decision", "Description", "🎲", "1.0.0", "dm_")
+        module.set_user_state(10, "message_id", 7)
+        module.set_user_state(10, "list_state", "waiting_input")
+        message = SimpleNamespace(
+            from_user=SimpleNamespace(id=10),
+            chat=SimpleNamespace(id=10, type="private"),
+            message_id=8,
+            text="<b>unsafe</b>, safe",
+        )
+
+        with (
+            patch.object(module, "_log_action"),
+            patch("modules.decision_maker.handlers.random.choice", return_value="<b>unsafe</b>"),
+        ):
+            module._process_list_input(message, bot)
+
+        rendered = bot.edit_message_text.call_args.kwargs["text"]
+        self.assertIn("&lt;b&gt;unsafe&lt;/b&gt;", rendered)
+        self.assertNotIn("<b><b>unsafe</b></b>", rendered)
+
     @staticmethod
-    def _callback(*, actor_id, chat_id, message_id):
+    def _callback(*, actor_id, chat_id, message_id, chat_type="private"):
         return SimpleNamespace(
             from_user=SimpleNamespace(id=actor_id),
             message=SimpleNamespace(
-                chat=SimpleNamespace(id=chat_id),
+                chat=SimpleNamespace(id=chat_id, type=chat_type),
                 message_id=message_id,
             ),
         )

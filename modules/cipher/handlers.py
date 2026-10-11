@@ -4,13 +4,16 @@
 
 import qrcode
 import os
+import tempfile
 import uuid
-import hashlib
 import html
 from telebot import types
+from telebot.apihelper import ApiTelegramException
 from typing import Any
 from core.module_base import BaseModule
 from core.database import DatabaseManager
+from core.exceptions import handle_exception
+from core.observability import event_fields, get_logger
 from .keyboards import (
     cipher_menu_keyboard,
     caesar_language_keyboard,
@@ -23,6 +26,7 @@ from .config import SHIFR, LEET_DIFF_NAMES, LEET_REPLACE_CHANCE
 
 # Глобальный экземпляр БД
 db = DatabaseManager()
+logger = get_logger(__name__)
 
 
 class CipherModule(BaseModule):
@@ -44,6 +48,13 @@ class CipherModule(BaseModule):
         :param bot: Экземпляр TeleBot
         :param call: Объект CallbackQuery
         """
+        if not self.require_private_chat(
+            bot,
+            call,
+            message="Шифратор доступен только в приватном чате с ботом.",
+        ):
+            return
+
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
@@ -75,6 +86,13 @@ class CipherModule(BaseModule):
         :param bot: Экземпляр TeleBot
         :param call: Объект CallbackQuery
         """
+        if not self.require_private_chat(
+            bot,
+            call,
+            message="Шифратор доступен только в приватном чате с ботом.",
+        ):
+            return
+
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
@@ -114,10 +132,7 @@ class CipherModule(BaseModule):
             if call.data == "cipher_back_to_menu":
                 qr_message_id = self.get_user_state(chat_id, 'qr_message_id')
                 if qr_message_id:
-                    try:
-                        bot.delete_message(chat_id, qr_message_id)
-                    except Exception:
-                        pass
+                    self._try_delete_message(bot, chat_id, qr_message_id)
 
                 bot.edit_message_text(
                     chat_id=chat_id,
@@ -354,10 +369,7 @@ class CipherModule(BaseModule):
                 if cipher == 'qr':
                     qr_message_id = self.get_user_state(chat_id, 'qr_message_id')
                     if qr_message_id:
-                        try:
-                            bot.delete_message(chat_id, qr_message_id)
-                        except Exception:
-                            pass
+                        self._try_delete_message(bot, chat_id, qr_message_id)
 
                 bot.edit_message_text(
                     chat_id=chat_id,
@@ -420,8 +432,25 @@ class CipherModule(BaseModule):
                 bot.register_next_step_handler_by_chat_id(chat_id, self._caesar_step_input, bot)
                 return
 
-        except Exception as e:
-            bot.answer_callback_query(call.id, f"Ошибка: {str(e)[:60]}", show_alert=True)
+        except Exception as exc:
+            handle_exception(
+                exc,
+                logger,
+                event="cipher.callback_failed",
+                context={"chat_id": chat_id},
+            )
+            bot.answer_callback_query(call.id, "Сервис временно недоступен.", show_alert=True)
+
+    @staticmethod
+    def _try_delete_message(bot: Any, chat_id: int, message_id: int) -> None:
+        try:
+            bot.delete_message(chat_id, message_id)
+        except ApiTelegramException as exc:
+            logger.info(
+                "%s",
+                type(exc).__name__,
+                extra=event_fields("cipher.message_delete_skipped", chat_id=chat_id),
+            )
 
     def get_menu_keyboard(self) -> types.InlineKeyboardMarkup:
         """
@@ -451,10 +480,7 @@ class CipherModule(BaseModule):
             self.set_user_state(chat_id, 'step', step)
 
             # Удаляем сообщение пользователя
-            try:
-                bot.delete_message(chat_id, message.message_id)
-            except Exception:
-                pass
+            self._try_delete_message(bot, chat_id, message.message_id)
 
             # Редактируем сообщение бота
             bot_message_id = self.get_user_state(chat_id, 'message_id')
@@ -469,10 +495,7 @@ class CipherModule(BaseModule):
 
         except ValueError:
             # Удаляем сообщение пользователя
-            try:
-                bot.delete_message(chat_id, message.message_id)
-            except Exception:
-                pass
+            self._try_delete_message(bot, chat_id, message.message_id)
 
             bot_message_id = self.get_user_state(chat_id, 'message_id')
             if bot_message_id:
@@ -495,10 +518,7 @@ class CipherModule(BaseModule):
         chat_id = message.chat.id
 
         # Удаляем сообщение пользователя
-        try:
-            bot.delete_message(chat_id, message.message_id)
-        except Exception:
-            pass
+        self._try_delete_message(bot, chat_id, message.message_id)
 
         bot_message_id = self.get_user_state(chat_id, 'message_id')
 
@@ -553,10 +573,7 @@ class CipherModule(BaseModule):
         text = message.text
 
         # Удаляем сообщение пользователя
-        try:
-            bot.delete_message(chat_id, message.message_id)
-        except Exception:
-            pass
+        self._try_delete_message(bot, chat_id, message.message_id)
 
         # Проверяем состояние
         if self.get_user_state(chat_id, 'message_id') is None:
@@ -572,6 +589,8 @@ class CipherModule(BaseModule):
         session_id = self.get_user_state(chat_id, 'session_id')
 
         try:
+            safe_text = html.escape(text)
+
             # Шифрование Морзе
             if cipher == "morze":
                 result = ""
@@ -594,8 +613,8 @@ class CipherModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text=(
-                        f"🔤 <b>Исходный текст:</b>\n<code>{text}</code>\n\n"
-                        f"📡 <b>Результат (Морзе):</b>\n<code>{result.strip()}</code>"
+                        f"🔤 <b>Исходный текст:</b>\n<code>{safe_text}</code>\n\n"
+                        f"📡 <b>Результат (Морзе):</b>\n<code>{html.escape(result.strip())}</code>"
                     ),
                     reply_markup=result_menu_keyboard('morze'),
                     parse_mode="HTML"
@@ -623,8 +642,8 @@ class CipherModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text=(
-                        f"🔤 <b>Исходный текст:</b>\n<code>{text}</code>\n\n"
-                        f"🔢 <b>Результат (числа):</b>\n<code>{result.strip()}</code>"
+                        f"🔤 <b>Исходный текст:</b>\n<code>{safe_text}</code>\n\n"
+                        f"🔢 <b>Результат (числа):</b>\n<code>{html.escape(result.strip())}</code>"
                     ),
                     reply_markup=result_menu_keyboard('numbers'),
                     parse_mode="HTML"
@@ -658,7 +677,6 @@ class CipherModule(BaseModule):
                 )
 
                 # Экранируем: leet-замены содержат < > & — иначе HTML-разметка сломается
-                safe_text = html.escape(text)
                 safe_result = html.escape(result)
 
                 #Отправляем результат
@@ -677,26 +695,22 @@ class CipherModule(BaseModule):
 
             # QR-код
             elif cipher == "qr":
-                # ИСПРАВЛЕНО: используем hashlib вместо hash() для стабильности
-                hash_object = hashlib.md5(text.encode())
-                filename = f"qr_{chat_id}_{hash_object.hexdigest()}.png"
+                with tempfile.NamedTemporaryFile(prefix="faztestbot-qr-", suffix=".png", delete=False) as temporary:
+                    filename = temporary.name
                 try:
                     # Генерация QR-кода
                     img = qrcode.make(text)
                     img.save(filename)
 
                     # Удаляем исходное сообщение
-                    try:
-                        bot.delete_message(chat_id, message_id)
-                    except Exception:
-                        pass
+                    self._try_delete_message(bot, chat_id, message_id)
 
                     # Отправляем QR-код
                     with open(filename, 'rb') as photo:
                         qr_message = bot.send_photo(
                             chat_id,
                             photo,
-                            caption=f"🔤 <b>Исходный текст:</b>\n<code>{text}</code>",
+                            caption=f"🔤 <b>Исходный текст:</b>\n<code>{safe_text}</code>",
                             parse_mode="HTML"
                         )
 
@@ -750,7 +764,7 @@ class CipherModule(BaseModule):
                         chat_id=chat_id,
                         message_id=message_id,
                         text=(
-                            f"🔤 <b>Исходный текст:</b>\n<code>{text}</code>\n\n"
+                            f"🔤 <b>Исходный текст:</b>\n<code>{safe_text}</code>\n\n"
                             f"{error_message}\n\n"
                             f"Введите текст заново:"
                         ),
@@ -778,19 +792,25 @@ class CipherModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text=(
-                        f"🔤 <b>Исходный текст:</b>\n<code>{text}</code>\n\n"
-                        f"🔄 <b>Результат (Цезарь):</b>\n<code>{result}</code>\n\n"
+                        f"🔤 <b>Исходный текст:</b>\n<code>{safe_text}</code>\n\n"
+                        f"🔄 <b>Результат (Цезарь):</b>\n<code>{html.escape(result)}</code>\n\n"
                         f"Язык: {lang_name}\nШаг: {step}"
                     ),
                     reply_markup=result_menu_keyboard('caesar'),
                     parse_mode="HTML"
                 )
 
-        except Exception as e:
+        except Exception as exc:
+            handle_exception(
+                exc,
+                logger,
+                event="cipher.text_processing_failed",
+                context={"chat_id": chat_id, "cipher": cipher or "unset"},
+            )
             bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"❌ Ошибка при обработке: {str(e)}",
+                text="❌ Сервис временно недоступен.",
                 reply_markup=self.get_menu_keyboard(),
                 parse_mode="HTML"
             )
@@ -802,7 +822,10 @@ class CipherModule(BaseModule):
 
         :param bot: Экземпляр TeleBot
         """
-        print(f"🔐 Модуль Шифратор v{self.version} загружен")
+        logger.info(
+            "module loaded",
+            extra=event_fields("cipher.module_loaded", version=self.version),
+        )
 
     def on_unload(self, bot: Any) -> None:
         """
@@ -810,4 +833,7 @@ class CipherModule(BaseModule):
 
         :param bot: Экземпляр TeleBot
         """
-        print(f"🔐 Модуль Шифратор v{self.version} выгружен")
+        logger.info(
+            "module unloaded",
+            extra=event_fields("cipher.module_unloaded", version=self.version),
+        )

@@ -125,21 +125,33 @@ class SteamDealsModule(BaseModule):
 
             # Мой вишлист
             if call.data == "steam_wishlist":
-                if not self._require_private_chat(bot, call):
+                if not self.require_private_chat(
+                    bot,
+                    call,
+                    message="Личный вишлист доступен только в приватном чате с ботом.",
+                ):
                     return
                 self._show_wishlist(bot, actor_id, chat_id, message_id)
                 return
 
             # Обновить вишлист
             if call.data == "steam_wishlist_refresh":
-                if not self._require_private_chat(bot, call):
+                if not self.require_private_chat(
+                    bot,
+                    call,
+                    message="Личный вишлист доступен только в приватном чате с ботом.",
+                ):
                     return
                 self._show_wishlist(bot, actor_id, chat_id, message_id, force_refresh=True)
                 return
 
             # Удалить игру
             if call.data == "steam_wishlist_delete":
-                if not self._require_private_chat(bot, call):
+                if not self.require_private_chat(
+                    bot,
+                    call,
+                    message="Личный вишлист доступен только в приватном чате с ботом.",
+                ):
                     return
                 self.set_interaction_state(actor_id, chat_id, "action", "delete_game")
                 bot.edit_message_text(
@@ -156,7 +168,11 @@ class SteamDealsModule(BaseModule):
 
             # Добавить игру из вишлиста
             if call.data == "steam_add_from_wishlist":
-                if not self._require_private_chat(bot, call):
+                if not self.require_private_chat(
+                    bot,
+                    call,
+                    message="Личный вишлист доступен только в приватном чате с ботом.",
+                ):
                     return
                 self.set_interaction_state(actor_id, chat_id, "action", "add_game")
                 bot.edit_message_text(
@@ -195,20 +211,6 @@ class SteamDealsModule(BaseModule):
                 context={"actor_id": actor_id, "chat_id": chat_id},
             )
             bot.answer_callback_query(call.id, "Сервис временно недоступен.", show_alert=True)
-
-    @staticmethod
-    def _require_private_chat(bot: Any, call: Any) -> bool:
-        """Keep personal wishlist conversations out of shared chats."""
-
-        chat = call.message.chat
-        if getattr(chat, "type", "private") == "private":
-            return True
-        bot.answer_callback_query(
-            call.id,
-            "Личный вишлист доступен только в приватном чате с ботом.",
-            show_alert=True,
-        )
-        return False
 
     @staticmethod
     def _try_delete_message(bot: Any, chat_id: int, message_id: int) -> None:
