@@ -1,378 +1,299 @@
-# core/database.py
-# Менеджер базы данных для логирования пользователей и операций шифрования
+"""Database access for users, cipher operations, and easter-egg state."""
 
-import sqlite3
+from __future__ import annotations
+
 import json
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List
+from pathlib import Path
+from typing import Any
+
+from core.migrations import DatabaseMigrator
+from core.observability import event_fields, get_logger
 from core.paths import DATABASE_PATH
+from core.storage import SQLiteDatabase
+
+logger = get_logger(__name__)
 
 
 class DatabaseManager:
-    """Менеджер базы данных пользователей и операций шифрования"""
+    """Preserve the legacy data API on top of the shared SQLite layer."""
 
-    def __init__(self, db_path: str = None, retention_days: int = 30):
-        self.db_path = db_path or DATABASE_PATH
+    def __init__(self, db_path: str | Path | None = None, retention_days: int = 30):
+        self.db_path = Path(db_path or DATABASE_PATH)
+        self.database = SQLiteDatabase(self.db_path)
         self.retention_days = retention_days
-        self._init_database()
+        DatabaseMigrator(self.db_path).apply_migrations()
         self._cleanup_old_logs()
 
-    def _init_database(self):
-        """Инициализация базы данных и создание таблиц"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+    def _cleanup_old_logs(self) -> None:
+        """Keep the existing cipher-log retention behavior unchanged."""
 
-        # Таблица пользователей
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                full_name TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                module_stats TEXT DEFAULT '{"cipher": 0}'
-            )
-        """)
-
-        # Таблица операций шифрования
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS cipher_operations (
-                operation_id TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                cipher_type TEXT NOT NULL,
-                original_text TEXT NOT NULL,
-                encrypted_text TEXT NOT NULL,
-                language TEXT,
-                step INTEGER,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                session_id TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-            )
-        """)
-
-        # Таблица состояний пасхалок
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS easter_eggs (
-                user_id INTEGER PRIMARY KEY,
-                current_step INTEGER DEFAULT 0,
-                last_completed TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-            )
-        """)
-
-        # Индексы для ускорения поиска
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON cipher_operations(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON cipher_operations(timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cipher_type ON cipher_operations(cipher_type)")
-
-        conn.commit()
-        conn.close()
-
-    def _cleanup_old_logs(self):
-        """Автоочистка логов старше retention_days дней"""
         if self.retention_days <= 0:
             return
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
         cutoff_date = datetime.now() - timedelta(days=self.retention_days)
-        cursor.execute("""
-            DELETE FROM cipher_operations 
-            WHERE timestamp < ?
-        """, (cutoff_date.strftime('%Y-%m-%d %H:%M:%S'),))
-
-        deleted = cursor.rowcount
-        conn.commit()
-        conn.close()
-
+        with self.database.connection(write=True) as connection:
+            cursor = connection.execute(
+                "DELETE FROM cipher_operations WHERE timestamp < ?",
+                (cutoff_date.strftime("%Y-%m-%d %H:%M:%S"),),
+            )
+            deleted = cursor.rowcount
         if deleted > 0:
-            print(f"🧹 Очищено {deleted} старых записей логов")
+            logger.info(
+                "removed %s expired database log records",
+                deleted,
+                extra=event_fields("database.logs_pruned", deleted_count=deleted),
+            )
 
-    def create_or_update_user(self, user_id: int, username: Optional[str] = None,
-                              first_name: Optional[str] = None, last_name: Optional[str] = None):
-        """Создаёт запись о пользователе или обновляет данные"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        full_name_parts = []
-        if first_name:
-            full_name_parts.append(first_name)
-        if last_name:
-            full_name_parts.append(last_name)
+    def create_or_update_user(
+        self,
+        user_id: int,
+        username: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+    ) -> None:
+        full_name_parts = [part for part in (first_name, last_name) if part]
         full_name = " ".join(full_name_parts) if full_name_parts else None
-
-        cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
-        exists = cursor.fetchone()
-
-        if exists:
-            cursor.execute("""
-                UPDATE users 
-                SET username = ?, full_name = ?, last_active = CURRENT_TIMESTAMP
-                WHERE user_id = ?
-            """, (username, full_name, user_id))
-        else:
-            cursor.execute("""
+        with self.database.connection(write=True) as connection:
+            connection.execute(
+                """
                 INSERT INTO users (user_id, username, full_name)
                 VALUES (?, ?, ?)
-            """, (user_id, username, full_name))
+                ON CONFLICT(user_id) DO UPDATE SET
+                    username = excluded.username,
+                    full_name = excluded.full_name,
+                    last_active = CURRENT_TIMESTAMP
+                """,
+                (user_id, username, full_name),
+            )
 
-        conn.commit()
-        conn.close()
-
-    def increment_module_stat(self, user_id: int, module_id: str):
-        """Увеличивает счётчик использования модуля"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT module_stats FROM users WHERE user_id = ?", (user_id,))
-        result = cursor.fetchone()
-
-        if result:
+    def increment_module_stat(self, user_id: int, module_id: str) -> None:
+        with self.database.connection(write=True) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            result = connection.execute(
+                "SELECT module_stats FROM users WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            if result is None:
+                return
             try:
                 stats = json.loads(result[0])
-            except:
+            except (TypeError, json.JSONDecodeError):
                 stats = {"cipher": 0}
-
             stats[module_id] = stats.get(module_id, 0) + 1
-
-            cursor.execute("""
-                UPDATE users 
+            connection.execute(
+                """
+                UPDATE users
                 SET module_stats = ?, last_active = CURRENT_TIMESTAMP
                 WHERE user_id = ?
-            """, (json.dumps(stats), user_id))
-            conn.commit()
+                """,
+                (json.dumps(stats), user_id),
+            )
 
-        conn.close()
+    def log_cipher_operation(
+        self,
+        user_id: int,
+        cipher_type: str,
+        original_text: str,
+        encrypted_text: str,
+        language: str | None = None,
+        step: int | None = None,
+        session_id: str | None = None,
+    ) -> None:
+        with self.database.connection(write=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO cipher_operations
+                    (operation_id, user_id, cipher_type, original_text, encrypted_text,
+                     language, step, session_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    user_id,
+                    cipher_type,
+                    original_text,
+                    encrypted_text,
+                    language,
+                    step,
+                    session_id,
+                ),
+            )
 
-    def log_cipher_operation(self, user_id: int, cipher_type: str,
-                             original_text: str, encrypted_text: str,
-                             language: Optional[str] = None, step: Optional[int] = None,
-                             session_id: Optional[str] = None):
-        """Логирует успешную операцию шифрования"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+    def get_user_stats(self, user_id: int) -> dict[str, Any] | None:
+        with self.database.connection() as connection:
+            result = connection.execute(
+                """
+                SELECT user_id, username, full_name, created_at, last_active, module_stats
+                FROM users WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+        if result is None:
+            return None
+        return {
+            "user_id": result[0],
+            "username": result[1],
+            "full_name": result[2],
+            "created_at": result[3],
+            "last_active": result[4],
+            "module_stats": json.loads(result[5]) if result[5] else {},
+        }
 
-        operation_id = str(uuid.uuid4())
+    def get_user_cipher_stats(self, user_id: int) -> dict[str, Any]:
+        today = datetime.now().strftime("%Y-%m-%d")
+        week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        with self.database.connection() as connection:
+            total_ops = connection.execute(
+                "SELECT COUNT(*) FROM cipher_operations WHERE user_id = ?", (user_id,)
+            ).fetchone()[0]
+            rows = connection.execute(
+                """
+                SELECT cipher_type, COUNT(*) AS count
+                FROM cipher_operations WHERE user_id = ?
+                GROUP BY cipher_type ORDER BY count DESC
+                """,
+                (user_id,),
+            ).fetchall()
+            cipher_distribution = {row[0]: row[1] for row in rows}
+            today_ops = connection.execute(
+                """
+                SELECT COUNT(*) FROM cipher_operations
+                WHERE user_id = ? AND DATE(timestamp) = ?
+                """,
+                (user_id, today),
+            ).fetchone()[0]
+            week_ops = connection.execute(
+                """
+                SELECT COUNT(*) FROM cipher_operations
+                WHERE user_id = ? AND DATE(timestamp) >= ?
+                """,
+                (user_id, week_ago),
+            ).fetchone()[0]
+            month_ops = connection.execute(
+                """
+                SELECT COUNT(*) FROM cipher_operations
+                WHERE user_id = ? AND DATE(timestamp) >= ?
+                """,
+                (user_id, month_ago),
+            ).fetchone()[0]
+            recent_rows = connection.execute(
+                """
+                SELECT cipher_type, original_text, encrypted_text, language, step, timestamp
+                FROM cipher_operations WHERE user_id = ?
+                ORDER BY timestamp DESC LIMIT 5
+                """,
+                (user_id,),
+            ).fetchall()
 
-        cursor.execute("""
-            INSERT INTO cipher_operations 
-            (operation_id, user_id, cipher_type, original_text, encrypted_text, 
-             language, step, session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            operation_id, user_id, cipher_type, original_text, encrypted_text,
-            language, step, session_id
-        ))
-
-        conn.commit()
-        conn.close()
-
-    def get_user_stats(self, user_id: int) -> Optional[Dict]:
-        """Получает полную статистику пользователя"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT user_id, username, full_name, created_at, last_active, module_stats
-            FROM users 
-            WHERE user_id = ?
-        """, (user_id,))
-        result = cursor.fetchone()
-        conn.close()
-
-        if result:
-            return {
-                "user_id": result[0],
-                "username": result[1],
-                "full_name": result[2],
-                "created_at": result[3],
-                "last_active": result[4],
-                "module_stats": json.loads(result[5]) if result[5] else {}
-            }
-        return None
-
-    def get_user_cipher_stats(self, user_id: int) -> Dict:
-        """Получает расширенную статистику шифрования"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT COUNT(*) FROM cipher_operations WHERE user_id = ?
-        """, (user_id,))
-        total_ops = cursor.fetchone()[0]
-
-        cursor.execute("""
-            SELECT cipher_type, COUNT(*) as count 
-            FROM cipher_operations 
-            WHERE user_id = ?
-            GROUP BY cipher_type
-            ORDER BY count DESC
-        """, (user_id,))
-        cipher_distribution = {row[0]: row[1] for row in cursor.fetchall()}
-
-        today = datetime.now().strftime('%Y-%m-%d')
-        cursor.execute("""
-            SELECT COUNT(*) FROM cipher_operations 
-            WHERE user_id = ? AND DATE(timestamp) = ?
-        """, (user_id, today))
-        today_ops = cursor.fetchone()[0]
-
-        week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-        cursor.execute("""
-            SELECT COUNT(*) FROM cipher_operations 
-            WHERE user_id = ? AND DATE(timestamp) >= ?
-        """, (user_id, week_ago))
-        week_ops = cursor.fetchone()[0]
-
-        month_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-        cursor.execute("""
-            SELECT COUNT(*) FROM cipher_operations 
-            WHERE user_id = ? AND DATE(timestamp) >= ?
-        """, (user_id, month_ago))
-        month_ops = cursor.fetchone()[0]
-
-        cursor.execute("""
-            SELECT cipher_type, original_text, encrypted_text, language, step, timestamp
-            FROM cipher_operations 
-            WHERE user_id = ?
-            ORDER BY timestamp DESC
-            LIMIT 5
-        """, (user_id,))
-        last_operations = []
-        for row in cursor.fetchall():
-            op = {
+        last_operations = [
+            {
                 "cipher_type": row[0],
-                "original_text": row[1][:50] + "..." if len(row[1]) > 50 else row[1],
-                "encrypted_text": row[2][:50] + "..." if len(row[2]) > 50 else row[2],
+                "original_text": self._preview(row[1]),
+                "encrypted_text": self._preview(row[2]),
                 "language": row[3] or "-",
                 "step": row[4] or "-",
-                "timestamp": row[5]
+                "timestamp": row[5],
             }
-            last_operations.append(op)
-
-        conn.close()
-
+            for row in recent_rows
+        ]
         return {
             "total_operations": total_ops,
             "cipher_distribution": cipher_distribution,
             "today_ops": today_ops,
             "week_ops": week_ops,
             "month_ops": month_ops,
-            "last_operations": last_operations
+            "last_operations": last_operations,
         }
 
-    def get_all_users(self) -> list:
-        """Получает список всех пользователей"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT user_id, username, full_name, created_at, last_active, module_stats
-            FROM users 
-            ORDER BY last_active DESC
-        """)
-        results = cursor.fetchall()
-        conn.close()
-
-        users = []
-        for row in results:
-            users.append({
+    def get_all_users(self) -> list[dict[str, Any]]:
+        with self.database.connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT user_id, username, full_name, created_at, last_active, module_stats
+                FROM users ORDER BY last_active DESC
+                """
+            ).fetchall()
+        return [
+            {
                 "user_id": row[0],
                 "username": row[1],
                 "full_name": row[2],
                 "created_at": row[3],
                 "last_active": row[4],
-                "module_stats": json.loads(row[5]) if row[5] else {}
-            })
-
-        return users
-
-    def get_user_easter_egg_state(self, user_id: int) -> Optional[Dict]:
-        """Получение состояния пасхалки"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT current_step, last_completed, created_at, updated_at
-            FROM easter_eggs 
-            WHERE user_id = ?
-        """, (user_id,))
-        result = cursor.fetchone()
-        conn.close()
-
-        if result:
-            return {
-                "current_step": result[0],
-                "last_completed": result[1],
-                "created_at": result[2],
-                "updated_at": result[3]
+                "module_stats": json.loads(row[5]) if row[5] else {},
             }
-        return None
+            for row in rows
+        ]
 
-    def update_user_easter_egg_state(self, user_id: int, state: Dict):
-        """Обновление состояния пасхалки"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+    def get_user_easter_egg_state(self, user_id: int) -> dict[str, Any] | None:
+        with self.database.connection() as connection:
+            result = connection.execute(
+                """
+                SELECT current_step, last_completed, created_at, updated_at
+                FROM easter_eggs WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+        if result is None:
+            return None
+        return {
+            "current_step": result[0],
+            "last_completed": result[1],
+            "created_at": result[2],
+            "updated_at": result[3],
+        }
 
-        cursor.execute("SELECT user_id FROM easter_eggs WHERE user_id = ?", (user_id,))
-        exists = cursor.fetchone()
-
-        if exists:
-            cursor.execute("""
-                UPDATE easter_eggs 
-                SET current_step = ?, last_completed = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = ?
-            """, (state['current_step'], state.get('last_completed'), user_id))
-        else:
-            cursor.execute("""
+    def update_user_easter_egg_state(self, user_id: int, state: dict[str, Any]) -> None:
+        with self.database.connection(write=True) as connection:
+            connection.execute(
+                """
                 INSERT INTO easter_eggs (user_id, current_step, last_completed)
                 VALUES (?, ?, ?)
-            """, (user_id, state['current_step'], state.get('last_completed')))
+                ON CONFLICT(user_id) DO UPDATE SET
+                    current_step = excluded.current_step,
+                    last_completed = excluded.last_completed,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (user_id, state["current_step"], state.get("last_completed")),
+            )
 
-        conn.commit()
-        conn.close()
+    def reset_user_easter_egg_state(self, user_id: int) -> None:
+        with self.database.connection(write=True) as connection:
+            connection.execute(
+                """
+                UPDATE easter_eggs
+                SET current_step = 0, last_completed = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+                """,
+                (user_id,),
+            )
 
-    def reset_user_easter_egg_state(self, user_id: int):
-        """Сброс состояния пасхалки"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            UPDATE easter_eggs 
-            SET current_step = 0, last_completed = NULL, updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = ?
-        """, (user_id,))
-
-        conn.commit()
-        conn.close()
-
-    def search_cipher_operations(self, query: str) -> List[Dict]:
-        """Поиск операций шифрования по ключевому слову"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT operation_id, user_id, cipher_type, original_text, encrypted_text, timestamp
-            FROM cipher_operations 
-            WHERE original_text LIKE ? OR encrypted_text LIKE ?
-            ORDER BY timestamp DESC
-            LIMIT 20
-        """, (f"%{query}%", f"%{query}%"))
-
-        results = []
-        for row in cursor.fetchall():
-            results.append({
+    def search_cipher_operations(self, query: str) -> list[dict[str, Any]]:
+        with self.database.connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT operation_id, user_id, cipher_type, original_text,
+                       encrypted_text, timestamp
+                FROM cipher_operations
+                WHERE original_text LIKE ? OR encrypted_text LIKE ?
+                ORDER BY timestamp DESC LIMIT 20
+                """,
+                (f"%{query}%", f"%{query}%"),
+            ).fetchall()
+        return [
+            {
                 "operation_id": row[0],
                 "user_id": row[1],
                 "cipher_type": row[2],
-                "original_text": row[3][:50] + "..." if len(row[3]) > 50 else row[3],
-                "encrypted_text": row[4][:50] + "..." if len(row[4]) > 50 else row[4],
-                "timestamp": row[5]
-            })
+                "original_text": self._preview(row[3]),
+                "encrypted_text": self._preview(row[4]),
+                "timestamp": row[5],
+            }
+            for row in rows
+        ]
 
-        conn.close()
-        return results
+    @staticmethod
+    def _preview(value: str) -> str:
+        return value[:50] + "..." if len(value) > 50 else value

@@ -1,0 +1,8 @@
+# Existing modules grandfathered when the CI contract was introduced.
+# Remove a module from this list as soon as tests/<module>/test_*.py exists.
+cipher
+decision_maker
+ip_lookup
+media_downloader
+steam_deals
+url_shortener

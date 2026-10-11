@@ -2,7 +2,6 @@
 # Обработчики модуля "URL Shortener"
 
 import asyncio
-import sqlite3
 from telebot import types
 from typing import Any
 from core.module_base import BaseModule
@@ -13,7 +12,6 @@ from .keyboards import (
     my_links_keyboard
 )
 from .api_client import url_client
-import config
 
 # Глобальный экземпляр БД
 db = DatabaseManager()
@@ -39,10 +37,11 @@ class URLShortenerModule(BaseModule):
         :param call: Объект CallbackQuery
         """
         chat_id = call.message.chat.id
+        actor_id = call.from_user.id
         message_id = call.message.message_id
 
         # Инициализируем состояние пользователя
-        self.set_user_state(chat_id, 'message_id', message_id)
+        self.set_interaction_state(actor_id, chat_id, 'message_id', message_id)
 
         # Показываем меню с кнопкой "Назад"
         bot.edit_message_text(
@@ -61,6 +60,7 @@ class URLShortenerModule(BaseModule):
         :param call: Объект CallbackQuery
         """
         chat_id = call.message.chat.id
+        actor_id = call.from_user.id
         message_id = call.message.message_id
 
         try:
@@ -93,7 +93,7 @@ class URLShortenerModule(BaseModule):
                     parse_mode="HTML"
                 )
                 # Очищаем состояние пользователя
-                self.cleanup_user_state(chat_id)
+                self.cleanup_interaction_state(actor_id, chat_id)
                 return
 
             # Назад в меню модуля (из результата сокращения)
@@ -122,7 +122,7 @@ class URLShortenerModule(BaseModule):
             # Мои ссылки
             elif call.data == "url_my_links":
                 # Получаем историю ссылок пользователя из БД
-                links = self._get_user_links(chat_id)
+                links = self._get_user_links(actor_id)
 
                 if not links:
                     text = "📋 <b>Мои ссылки</b>\n\n"
@@ -182,6 +182,7 @@ class URLShortenerModule(BaseModule):
     def _process_url_input(self, message, bot):
         """Обработка ввода ссылки для сокращения"""
         chat_id = message.chat.id
+        actor_id = message.from_user.id
         url = message.text.strip()
 
         # Удаляем сообщение пользователя (приватность)
@@ -191,7 +192,7 @@ class URLShortenerModule(BaseModule):
             pass
 
         # Проверяем состояние
-        message_id = self.get_user_state(chat_id, 'message_id')
+        message_id = self.get_interaction_state(actor_id, chat_id, 'message_id')
         if message_id is None:
             from core.keyboards import back_to_main_keyboard
             bot.send_message(
@@ -209,7 +210,7 @@ class URLShortenerModule(BaseModule):
                 shortened_url = result
 
                 # Логируем операцию в БД
-                self._log_url_operation(chat_id, url, shortened_url)
+                self._log_url_operation(actor_id, url, shortened_url)
 
                 # Формируем сообщение с результатом (как в шифраторе)
                 original_display = url if len(url) <= 50 else url[:50] + "..."
@@ -248,29 +249,14 @@ class URLShortenerModule(BaseModule):
     def _log_url_operation(user_id: int, original_url: str, shortened_url: str):
         """Логирование операции сокращения в БД"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            # Создаём таблицу если не существует
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS url_shortener_logs (
-                    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    original_url TEXT NOT NULL,
-                    shortened_url TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    clicks_count INTEGER DEFAULT 0
+            with db.database.connection(write=True) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO url_shortener_logs (user_id, original_url, shortened_url)
+                    VALUES (?, ?, ?)
+                    """,
+                    (user_id, original_url, shortened_url),
                 )
-            """)
-
-            # Вставляем запись
-            cursor.execute("""
-                INSERT INTO url_shortener_logs (user_id, original_url, shortened_url)
-                VALUES (?, ?, ?)
-            """, (user_id, original_url, shortened_url))
-
-            conn.commit()
-            conn.close()
         except Exception as e:
             print(f"⚠️ Ошибка логирования URL: {str(e)}")
 
@@ -278,19 +264,19 @@ class URLShortenerModule(BaseModule):
     def _get_user_links(user_id: int) -> list:
         """Получение истории ссылок пользователя из БД"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute("""
-                SELECT original_url, shortened_url, created_at, clicks_count
-                FROM url_shortener_logs
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-                LIMIT 50
-            """, (user_id,))
-
+            with db.database.connection() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT original_url, shortened_url, created_at, clicks_count
+                    FROM url_shortener_logs
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 50
+                    """,
+                    (user_id,),
+                ).fetchall()
             links = []
-            for row in cursor.fetchall():
+            for row in rows:
                 links.append({
                     'original_url': row[0],
                     'shortened_url': row[1],
@@ -298,7 +284,6 @@ class URLShortenerModule(BaseModule):
                     'clicks_count': row[3]
                 })
 
-            conn.close()
             return links
         except Exception as e:
             print(f"⚠️ Ошибка получения ссылок: {str(e)}")

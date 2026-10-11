@@ -1,12 +1,14 @@
 # modules/url_shortener/config.py
 # Конфигурация модуля "URL Shortener"
 
+import config
+
 # API сервис для сокращения ссылок
 # Варианты: "tinyurl" (без ключа) или "cuttly" (требует API ключ)
-URL_SHORTENER_SERVICE = "tinyurl"
+URL_SHORTENER_SERVICE = config.URL_SHORTENER_SERVICE
 
 # API ключ для Cutt.ly (получить на https://cutt.ly/api)
-CUTTLY_API_KEY = ""
+CUTTLY_API_KEY = config.CUTTLY_API_KEY
 
 # Лимиты
 MAX_URLS_PER_USER_PER_DAY = 100  # Максимум ссылок на пользователя в день

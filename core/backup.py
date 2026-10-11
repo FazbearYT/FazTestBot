@@ -1,14 +1,18 @@
 # core/backup.py
 # Система резервного копирования базы данных FazTestBot
 
-import sqlite3
 import os
-import shutil
+import re
 from datetime import datetime, timedelta
-from typing import List, Tuple
 from pathlib import Path
+
 import config
+from core.observability import event_fields, get_logger
 from core.paths import BACKUPS_DIR, DATABASE_PATH
+from core.storage import SQLiteDatabase
+
+BACKUP_FILENAME_PATTERN = re.compile(r"^users_(?:manual|auto)_\d{8}_\d{6}(?:_\d{6})?\.db$")
+logger = get_logger(__name__)
 
 
 class BackupManager:
@@ -22,6 +26,7 @@ class BackupManager:
     def __init__(self, backup_dir: str = None, db_path: str = None):
         self.backup_dir = Path(backup_dir or BACKUPS_DIR)
         self.db_path = Path(db_path or DATABASE_PATH)
+        self.database = SQLiteDatabase(self.db_path)
         self.retention_count = config.BACKUP_RETENTION_COUNT
         self.retention_days = config.BACKUP_RETENTION_DAYS
         self._ensure_backup_dir()
@@ -30,9 +35,13 @@ class BackupManager:
         """Создание директории для бэкапов если не существует"""
         if not os.path.exists(self.backup_dir):
             os.makedirs(self.backup_dir)
-            print(f"📁 Создана папка для бэкапов: {self.backup_dir}")
+            logger.info(
+                "backup directory created: %s",
+                self.backup_dir,
+                extra=event_fields("backup.directory_created", path=str(self.backup_dir)),
+            )
 
-    def create_backup(self, manual: bool = False) -> Tuple[bool, str]:
+    def create_backup(self, manual: bool = False, *, rotate: bool = True) -> tuple[bool, str]:
         """
         Создание бэкапа базы данных.
 
@@ -44,29 +53,25 @@ class BackupManager:
             if not os.path.exists(self.db_path):
                 return False, "❌ База данных не найдена"
 
-            # Проверяем, не открыта ли БД в данный момент
-            try:
-                conn = sqlite3.connect(self.db_path)
-                conn.execute("SELECT 1")
-                conn.close()
-            except sqlite3.OperationalError as e:
-                return False, f"❌ База данных заблокирована: {str(e)}"
-
             # Генерируем имя файла бэкапа
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Microseconds prevent a safety backup created during restore from
+            # overwriting the selected backup in the same second.
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_type = "manual" if manual else "auto"
             backup_filename = f"users_{backup_type}_{timestamp}.db"
-            backup_path = os.path.join(self.backup_dir, backup_filename)
+            backup_path = self.backup_dir / backup_filename
 
-            # Копируем файл БД
-            shutil.copy2(self.db_path, backup_path)
+            # SQLite Online Backup API includes committed WAL pages and creates
+            # a transactionally consistent snapshot of an active database.
+            self.database.backup_to(backup_path)
 
             # Проверяем успешность копирования
             if os.path.exists(backup_path):
                 backup_size = os.path.getsize(backup_path)
 
                 # Ротация старых бэкапов
-                self._rotate_backups()
+                if rotate:
+                    self._rotate_backups()
 
                 message = (
                     f"✅ Бэкап создан успешно!\n\n"
@@ -75,10 +80,16 @@ class BackupManager:
                     f"🕐 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
                 )
 
-                if manual:
-                    print(f"💾 Ручной бэкап создан: {backup_filename}")
-                else:
-                    print(f"💾 Автоматический бэкап создан: {backup_filename}")
+                logger.info(
+                    "backup created: %s",
+                    backup_filename,
+                    extra=event_fields(
+                        "backup.created",
+                        backup_type=backup_type,
+                        backup_filename=backup_filename,
+                        size_bytes=backup_size,
+                    ),
+                )
 
                 return True, message
             else:
@@ -86,7 +97,10 @@ class BackupManager:
 
         except Exception as e:
             error_msg = f"❌ Исключение при создании бэкапа: {str(e)}"
-            print(error_msg)
+            logger.exception(
+                "backup creation failed",
+                extra=event_fields("backup.create_failed", manual=manual),
+            )
             return False, error_msg
 
     def _rotate_backups(self):
@@ -95,42 +109,57 @@ class BackupManager:
             # Получаем список всех бэкапов
             backup_files = []
             for filename in os.listdir(self.backup_dir):
-                if filename.startswith("users_") and filename.endswith(".db"):
+                if BACKUP_FILENAME_PATTERN.fullmatch(filename):
                     filepath = os.path.join(self.backup_dir, filename)
-                    backup_files.append({
-                        'filename': filename,
-                        'path': filepath,
-                        'mtime': datetime.fromtimestamp(os.path.getmtime(filepath))
-                    })
+                    backup_files.append(
+                        {
+                            "filename": filename,
+                            "path": filepath,
+                            "mtime": datetime.fromtimestamp(os.path.getmtime(filepath)),
+                        }
+                    )
 
             # Сортируем по времени создания (новые первые)
-            backup_files.sort(key=lambda x: x['mtime'], reverse=True)
+            backup_files.sort(key=lambda x: x["mtime"], reverse=True)
 
-            # Удаляем бэкапы сверх лимита количества
-            if len(backup_files) > self.retention_count:
-                for backup in backup_files[self.retention_count:]:
-                    try:
-                        os.remove(backup['path'])
-                        print(f"🗑️ Удалён старый бэкап: {backup['filename']}")
-                    except Exception as e:
-                        print(f"⚠️ Ошибка удаления бэкапа {backup['filename']}: {str(e)}")
-
-            # Удаляем бэкапы старше retention_days
             cutoff_date = datetime.now() - timedelta(days=self.retention_days)
-            for backup in backup_files:
-                if backup['mtime'] < cutoff_date:
-                    try:
-                        os.remove(backup['path'])
-                        print(f"🗑️ Удалён устаревший бэкап: {backup['filename']}")
-                    except Exception as e:
-                        print(f"⚠️ Ошибка удаления бэкапа {backup['filename']}: {str(e)}")
+            for index, backup in enumerate(backup_files):
+                over_count = index >= self.retention_count
+                expired = backup["mtime"] < cutoff_date
+                if not (over_count or expired):
+                    continue
+                try:
+                    os.remove(backup["path"])
+                    logger.info(
+                        "expired backup removed: %s",
+                        backup["filename"],
+                        extra=event_fields(
+                            "backup.rotated",
+                            backup_filename=backup["filename"],
+                            expired=expired,
+                            over_count=over_count,
+                        ),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "failed to remove expired backup %s",
+                        backup["filename"],
+                        exc_info=(type(e), e, e.__traceback__),
+                        extra=event_fields(
+                            "backup.rotation_delete_failed",
+                            backup_filename=backup["filename"],
+                        ),
+                    )
 
-        except Exception as e:
-            print(f"⚠️ Ошибка ротации бэкапов: {str(e)}")
+        except Exception:
+            logger.exception(
+                "backup rotation failed",
+                extra=event_fields("backup.rotation_failed"),
+            )
 
     def _format_size(self, size_bytes: int) -> str:
         """Форматирование размера файла в человекочитаемый вид"""
-        for unit in ['Б', 'КБ', 'МБ', 'ГБ']:
+        for unit in ["Б", "КБ", "МБ", "ГБ"]:
             if size_bytes < 1024.0:
                 return f"{size_bytes:.2f} {unit}"
             size_bytes /= 1024.0
@@ -146,26 +175,31 @@ class BackupManager:
 
         try:
             for filename in os.listdir(self.backup_dir):
-                if filename.startswith("users_") and filename.endswith(".db"):
+                if BACKUP_FILENAME_PATTERN.fullmatch(filename):
                     filepath = os.path.join(self.backup_dir, filename)
                     stat = os.stat(filepath)
 
                     backup_type = "Ручной" if "_manual_" in filename else "Авто"
 
-                    backup_list.append({
-                        'filename': filename,
-                        'path': filepath,
-                        'size': stat.st_size,
-                        'size_formatted': self._format_size(stat.st_size),
-                        'created': datetime.fromtimestamp(stat.st_mtime),
-                        'type': backup_type
-                    })
+                    backup_list.append(
+                        {
+                            "filename": filename,
+                            "path": filepath,
+                            "size": stat.st_size,
+                            "size_formatted": self._format_size(stat.st_size),
+                            "created": datetime.fromtimestamp(stat.st_mtime),
+                            "type": backup_type,
+                        }
+                    )
 
             # Сортируем по времени (новые первые)
-            backup_list.sort(key=lambda x: x['created'], reverse=True)
+            backup_list.sort(key=lambda x: x["created"], reverse=True)
 
-        except Exception as e:
-            print(f"⚠️ Ошибка получения списка бэкапов: {str(e)}")
+        except Exception:
+            logger.exception(
+                "failed to list backups",
+                extra=event_fields("backup.list_failed"),
+            )
 
         return backup_list
 
@@ -177,21 +211,25 @@ class BackupManager:
         """
         backup_list = self.get_backup_list()
 
-        total_size = sum(b['size'] for b in backup_list)
-        auto_count = sum(1 for b in backup_list if b['type'] == "Авто")
-        manual_count = sum(1 for b in backup_list if b['type'] == "Ручной")
+        total_size = sum(b["size"] for b in backup_list)
+        auto_count = sum(1 for b in backup_list if b["type"] == "Авто")
+        manual_count = sum(1 for b in backup_list if b["type"] == "Ручной")
 
         return {
-            'total_count': len(backup_list),
-            'auto_count': auto_count,
-            'manual_count': manual_count,
-            'total_size': total_size,
-            'total_size_formatted': self._format_size(total_size),
-            'newest': backup_list[0]['created'].strftime('%d.%m.%Y %H:%M') if backup_list else "Нет бэкапов",
-            'oldest': backup_list[-1]['created'].strftime('%d.%m.%Y %H:%M') if backup_list else "Нет бэкапов"
+            "total_count": len(backup_list),
+            "auto_count": auto_count,
+            "manual_count": manual_count,
+            "total_size": total_size,
+            "total_size_formatted": self._format_size(total_size),
+            "newest": backup_list[0]["created"].strftime("%d.%m.%Y %H:%M")
+            if backup_list
+            else "Нет бэкапов",
+            "oldest": backup_list[-1]["created"].strftime("%d.%m.%Y %H:%M")
+            if backup_list
+            else "Нет бэкапов",
         }
 
-    def delete_backup(self, filename: str) -> Tuple[bool, str]:
+    def delete_backup(self, filename: str) -> tuple[bool, str]:
         """
         Удаление конкретного бэкапа.
 
@@ -199,25 +237,22 @@ class BackupManager:
         :return: (success: bool, message: str)
         """
         try:
-            filepath = os.path.join(self.backup_dir, filename)
-
-            # Проверяем существование
-            if not os.path.exists(filepath):
-                return False, f"❌ Бэкап не найден: {filename}"
-
-            # Проверяем что это действительно файл бэкапа
-            if not filename.startswith("users_") or not filename.endswith(".db"):
+            filepath = self._resolve_backup_path(filename)
+            if filepath is None:
                 return False, "❌ Неверный формат файла бэкапа"
 
+            if not filepath.is_file():
+                return False, f"❌ Бэкап не найден: {filename}"
+
             # Удаляем файл
-            os.remove(filepath)
+            filepath.unlink()
 
             return True, f"✅ Бэкап удалён: {filename}"
 
         except Exception as e:
             return False, f"❌ Ошибка удаления бэкапа: {str(e)}"
 
-    def restore_backup(self, filename: str) -> Tuple[bool, str]:
+    def restore_backup(self, filename: str) -> tuple[bool, str]:
         """
         Восстановление из бэкапа.
 
@@ -225,23 +260,54 @@ class BackupManager:
         :return: (success: bool, message: str)
         """
         try:
-            backup_path = os.path.join(self.backup_dir, filename)
+            backup_path = self._resolve_backup_path(filename)
+            if backup_path is None:
+                return False, "❌ Неверный формат файла бэкапа"
 
             # Проверяем существование
-            if not os.path.exists(backup_path):
+            if not backup_path.is_file():
                 return False, f"❌ Бэкап не найден: {filename}"
 
-            # Создаём бэкап текущей БД перед восстановлением
-            print("📦 Создание бэкапа текущей БД перед восстановлением...")
-            self.create_backup(manual=True)
+            # Never touch the live database when the selected snapshot is invalid.
+            SQLiteDatabase(backup_path).validate()
 
-            # Восстанавливаем из бэкапа
-            shutil.copy2(backup_path, self.db_path)
+            # Создаём бэкап текущей БД перед восстановлением
+            logger.info(
+                "creating safety backup before restore",
+                extra=event_fields("backup.restore_safety_started", backup_filename=filename),
+            )
+            safety_created, safety_message = self.create_backup(manual=True, rotate=False)
+            if not safety_created:
+                return False, f"❌ Защитный бэкап не создан: {safety_message}"
+
+            # SQLite holds a destination write transaction for the online restore.
+            self.database.restore_from(backup_path)
+            self._rotate_backups()
+
+            logger.info(
+                "database restored from backup: %s",
+                filename,
+                extra=event_fields("backup.restored", backup_filename=filename),
+            )
 
             return True, f"✅ Восстановление выполнено из: {filename}"
 
         except Exception as e:
+            logger.exception(
+                "database restore failed",
+                extra=event_fields("backup.restore_failed", backup_filename=filename),
+            )
             return False, f"❌ Ошибка восстановления: {str(e)}"
+
+    def _resolve_backup_path(self, filename: str) -> Path | None:
+        """Resolve a plain generated filename inside the configured directory."""
+
+        if not BACKUP_FILENAME_PATTERN.fullmatch(filename):
+            return None
+        candidate = (self.backup_dir / filename).resolve()
+        if candidate.parent != self.backup_dir.resolve():
+            return None
+        return candidate
 
 
 # Глобальный экземпляр менеджера бэкапов

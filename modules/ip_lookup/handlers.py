@@ -2,7 +2,6 @@
 # Обработчики модуля "IP Info Lookup"
 
 import asyncio
-import sqlite3
 from datetime import datetime, timedelta
 from telebot import types
 from typing import Any
@@ -18,7 +17,6 @@ from .config import (
     MAX_LOOKUPS_PER_USER_PER_DAY,
     TABLE_NAME
 )
-import config
 
 db = DatabaseManager()
 
@@ -31,40 +29,16 @@ class IPLookupModule(BaseModule):
     def __init__(self, module_id, name, description, icon, version, callback_prefix):
         """Инициализация модуля IP Info Lookup"""
         super().__init__(module_id, name, description, icon, version, callback_prefix)
-        self._init_database()
-
-    def _init_database(self):
-        """Инициализация таблицы запросов в БД"""
-        try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-                    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    query TEXT NOT NULL,
-                    ip TEXT,
-                    city TEXT,
-                    country TEXT,
-                    isp TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"⚠️ Ошибка инициализации БД: {str(e)}")
 
     def handle_entry(self, bot: Any, call: Any) -> None:
         """
         ОБЯЗАТЕЛЬНО: Вход в модуль — показ меню.
         """
         chat_id = call.message.chat.id
+        actor_id = call.from_user.id
         message_id = call.message.message_id
 
-        self.set_user_state(chat_id, 'message_id', message_id)
+        self.set_interaction_state(actor_id, chat_id, 'message_id', message_id)
 
         bot.edit_message_text(
             chat_id=chat_id,
@@ -86,6 +60,7 @@ class IPLookupModule(BaseModule):
         ОБЯЗАТЕЛЬНО: Обработка колбэков внутри модуля.
         """
         chat_id = call.message.chat.id
+        actor_id = call.from_user.id
         message_id = call.message.message_id
 
         try:
@@ -111,7 +86,7 @@ class IPLookupModule(BaseModule):
                     reply_markup=kb,
                     parse_mode="HTML"
                 )
-                self.cleanup_user_state(chat_id)
+                self.cleanup_interaction_state(actor_id, chat_id)
                 return
 
             # Назад в меню модуля
@@ -127,7 +102,7 @@ class IPLookupModule(BaseModule):
 
             # Поиск IP
             if call.data == "ip_search":
-                self.set_user_state(chat_id, 'query_type', 'search')
+                self.set_interaction_state(actor_id, chat_id, 'query_type', 'search')
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -143,7 +118,7 @@ class IPLookupModule(BaseModule):
 
             # История
             if call.data == "ip_history":
-                lookups = self._get_user_lookups(chat_id)
+                lookups = self._get_user_lookups(actor_id)
 
                 if not lookups:
                     text = "📋 <b>История запросов</b>\n\n"
@@ -173,7 +148,7 @@ class IPLookupModule(BaseModule):
 
             # Повторный поиск
             if call.data == "ip_search_again":
-                self.set_user_state(chat_id, 'query_type', 'search')
+                self.set_interaction_state(actor_id, chat_id, 'query_type', 'search')
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -201,6 +176,7 @@ class IPLookupModule(BaseModule):
     def _process_ip_input(self, message, bot):
         """Обработка ввода IP адреса"""
         chat_id = message.chat.id
+        actor_id = message.from_user.id
         ip = message.text.strip()
 
         # Удаляем сообщение пользователя
@@ -209,7 +185,7 @@ class IPLookupModule(BaseModule):
         except:
             pass
 
-        message_id = self.get_user_state(chat_id, 'message_id')
+        message_id = self.get_interaction_state(actor_id, chat_id, 'message_id')
 
         if message_id is None:
             bot.send_message(
@@ -220,7 +196,7 @@ class IPLookupModule(BaseModule):
             return
 
         # Проверяем лимит
-        if not self._check_lookup_limit(chat_id):
+        if not self._check_lookup_limit(actor_id):
             bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
@@ -258,7 +234,7 @@ class IPLookupModule(BaseModule):
             )
 
             # Логируем
-            self._log_lookup(chat_id, ip, info)
+            self._log_lookup(actor_id, ip, info)
         else:
             error_msg = info.get('error', 'Неизвестная ошибка')
 
@@ -270,7 +246,7 @@ class IPLookupModule(BaseModule):
                     text="⚠️ <b>Превышен лимит API</b>\n\n"
                          "Сервис ipapi.co имеет ограничение на количество запросов.\n\n"
                          "Подождите несколько минут и попробуйте снова.\n\n"
-                         "Или получите бесплатный API ключ на ipinfo.io и добавьте его в secrets.py",
+                         "Или получите бесплатный API ключ на ipinfo.io и добавьте его в .env",
                     reply_markup=ip_lookup_menu_keyboard(),
                     parse_mode="HTML"
                 )
@@ -313,62 +289,58 @@ class IPLookupModule(BaseModule):
     def _check_lookup_limit(self, user_id: int) -> bool:
         """Проверка лимита запросов"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
             today = datetime.now().strftime('%Y-%m-%d')
-
-            cursor.execute(f"""
-                SELECT COUNT(*) FROM {TABLE_NAME}
-                WHERE user_id = ? AND DATE(created_at) = ?
-            """, (user_id, today))
-
-            count = cursor.fetchone()[0]
-            conn.close()
+            with db.database.connection() as connection:
+                count = connection.execute(
+                    f"""
+                    SELECT COUNT(*) FROM {TABLE_NAME}
+                    WHERE user_id = ? AND DATE(created_at) = ?
+                    """,
+                    (user_id, today),
+                ).fetchone()[0]
 
             return count < MAX_LOOKUPS_PER_USER_PER_DAY
-        except:
+        except Exception:
             return True
 
     def _log_lookup(self, user_id: int, query: str, info: dict):
         """Логирование запроса"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute(f"""
-                INSERT INTO {TABLE_NAME} 
-                (user_id, query, ip, city, country, isp)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                user_id,
-                query,
-                info.get('ip', query),
-                info.get('city', 'Unknown'),
-                info.get('country', 'Unknown'),
-                info.get('isp', 'Unknown')
-            ))
-
-            conn.commit()
-            conn.close()
+            with db.database.connection(write=True) as connection:
+                connection.execute(
+                    f"""
+                    INSERT INTO {TABLE_NAME}
+                    (user_id, query, ip, city, country, isp)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        query,
+                        info.get('ip', query),
+                        info.get('city', 'Unknown'),
+                        info.get('country', 'Unknown'),
+                        info.get('isp', 'Unknown'),
+                    ),
+                )
         except Exception as e:
             print(f"⚠️ Ошибка логирования: {str(e)}")
 
     def _get_user_lookups(self, user_id: int) -> list:
         """Получение истории запросов пользователя"""
         try:
-            conn = sqlite3.connect(config.DATABASE_PATH)
-            cursor = conn.cursor()
-
-            cursor.execute(f"""
-                SELECT query, ip, city, country, isp, created_at
-                FROM {TABLE_NAME}
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-                LIMIT 50
-            """, (user_id,))
-
+            with db.database.connection() as connection:
+                rows = connection.execute(
+                    f"""
+                    SELECT query, ip, city, country, isp, created_at
+                    FROM {TABLE_NAME}
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 50
+                    """,
+                    (user_id,),
+                ).fetchall()
             lookups = []
-            for row in cursor.fetchall():
+            for row in rows:
                 lookups.append({
                     'query': row[0],
                     'ip': row[1],
@@ -378,9 +350,8 @@ class IPLookupModule(BaseModule):
                     'created_at': row[5]
                 })
 
-            conn.close()
             return lookups
-        except:
+        except Exception:
             return []
 
     def on_load(self, bot: Any) -> None:

@@ -1,29 +1,55 @@
 # core/handlers.py
 # Глобальные обработчики для главного меню, навигации, админ-панели и пасхалок
 
+
 import config
-from telebot import types
+from core.admin import admin_manager
+from core.admin_panel import (
+    AdminPanelService,
+    render_backup_info,
+    render_backup_overview,
+    render_backup_result,
+    render_backup_stats,
+    render_health,
+    render_modules,
+    render_overview,
+    render_restore_instructions,
+    render_search_results,
+    render_user_profile,
+)
+from core.admin_security import (
+    AdminConfirmationStore,
+    AdminInteractionState,
+    has_admin_access,
+    is_private_chat,
+)
+from core.backup import backup_manager
+from core.database import DatabaseManager
+from core.easter_eggs import EasterEggManager
+from core.exceptions import classify_exception, handle_exception
+from core.observability import event_fields, get_logger
+from core.settings import load_settings
+
 from .keyboards import (
-    main_menu_keyboard,
-    modules_menu_keyboard,
+    admin_menu_keyboard,
+    admin_observability_keyboard,
     back_to_main_keyboard,
     back_to_modules_keyboard,
-    admin_menu_keyboard,
-    user_search_keyboard,
-    emergency_confirm_keyboard,
-    cleanup_keyboard,
-    export_keyboard,
-    stats_navigation_keyboard,
-    easter_egg_keyboard,
-    backup_menu_keyboard,
+    backup_info_keyboard,
     backup_list_keyboard,
-    backup_info_keyboard
+    backup_menu_keyboard,
+    cleanup_keyboard,
+    destructive_confirm_keyboard,
+    easter_egg_keyboard,
+    export_keyboard,
+    main_menu_keyboard,
+    modules_menu_keyboard,
+    stats_navigation_keyboard,
+    user_search_keyboard,
 )
 from .module_manager import module_manager
-from core.database import DatabaseManager
-from core.admin import admin_manager
-from core.easter_eggs import EasterEggManager, easter_egg_manager
-from core.backup import backup_manager
+
+logger = get_logger(__name__)
 
 # Инициализация менеджеров
 db = DatabaseManager()
@@ -33,11 +59,14 @@ admin_mgr = admin_manager
 easter_egg_manager = EasterEggManager(db)
 
 # Состояния пользователей для режимов ввода (поиск, экспорт и т.д.)
-user_input_state = {}  # {user_id: {'mode': 'search_user', 'message_id': int}}
+user_input_state = AdminInteractionState()
+admin_confirmations = AdminConfirmationStore()
 
 
 def register_global_handlers(bot):
     """Регистрация глобальных обработчиков с поддержкой пасхалок и блокировки"""
+
+    admin_panel = AdminPanelService(admin_mgr, module_manager, load_settings())
 
     @bot.message_handler(commands=['start'])
     def send_welcome(message):
@@ -70,6 +99,8 @@ def register_global_handlers(bot):
         # Проверяем, не заблокирован ли пользователь
         if easter_egg_manager.check_blocked_user(message.from_user.id):
             return  # Полностью игнорируем заблокированного пользователя
+        if not is_private_chat(message):
+            return
 
         db.create_or_update_user(
             user_id=message.from_user.id,
@@ -99,6 +130,8 @@ def register_global_handlers(bot):
         # Проверяем, не заблокирован ли пользователь
         if easter_egg_manager.check_blocked_user(message.from_user.id):
             return  # Полностью игнорируем заблокированного пользователя
+        if not is_private_chat(message):
+            return
 
         db.create_or_update_user(
             user_id=message.from_user.id,
@@ -123,7 +156,6 @@ def register_global_handlers(bot):
                 reply_markup=main_menu_keyboard(),
                 parse_mode="HTML"
             )
-            admin_mgr.log_admin_action(message.from_user.id, "auth_by_code", None)
         else:
             bot.send_message(
                 message.chat.id,
@@ -137,6 +169,8 @@ def register_global_handlers(bot):
         # Проверяем, не заблокирован ли пользователь
         if easter_egg_manager.check_blocked_user(message.from_user.id):
             return  # Полностью игнорируем заблокированного пользователя
+        if not is_private_chat(message):
+            return
 
         db.create_or_update_user(
             user_id=message.from_user.id,
@@ -157,14 +191,17 @@ def register_global_handlers(bot):
     def show_admin_stats(bot_instance, message):
         """Показывает подробную статистику администратору"""
         stats = db.get_user_cipher_stats(message.from_user.id)
-        user_info = db.get_user_stats(message.from_user.id)
 
         total = stats['total_operations']
         dist = stats['cipher_distribution']
 
         text = "📊 <b>Ваша статистика шифрования</b>\n\n"
         text += f"Всего операций: <b>{total}</b>\n"
-        text += f"Сегодня: <b>{stats['today_ops']}</b> | Неделя: <b>{stats['week_ops']}</b> | Месяц: <b>{stats['month_ops']}</b>\n\n"
+        text += (
+            f"Сегодня: <b>{stats['today_ops']}</b> | "
+            f"Неделя: <b>{stats['week_ops']}</b> | "
+            f"Месяц: <b>{stats['month_ops']}</b>\n\n"
+        )
 
         if total > 0:
             text += "┌──────────────────────────────┐\n"
@@ -233,15 +270,22 @@ def register_global_handlers(bot):
                     bot.send_document(
                         chat_id,
                         f,
-                        caption="📜 <b>История разработки FazTestBot</b>\n\nПолная история всех версий бота.",
+                        caption=(
+                            "📜 <b>История разработки FazTestBot</b>\n\n"
+                            "Полная история всех версий бота."
+                        ),
                         parse_mode="HTML"
                     )
 
                 # Удаляем сообщение с меню пасхалки
                 try:
                     bot.delete_message(chat_id, message_id)
-                except:
-                    pass
+                except Exception as error:
+                    logger.debug(
+                        "easter egg menu message was already unavailable",
+                        exc_info=(type(error), error, error.__traceback__),
+                        extra=event_fields("telegram.message_delete_failed"),
+                    )
 
                 # Отправляем новое сообщение с главным меню
                 bot.send_message(
@@ -272,11 +316,14 @@ def register_global_handlers(bot):
                 )
 
         except Exception as e:
-            # Полное логирование ошибки для отладки
-            print(f"❌ Ошибка в handle_easter_egg_callbacks: {str(e)}")
+            user_message = handle_exception(
+                e,
+                logger,
+                event="handler.easter_egg_failed",
+            )
             bot.answer_callback_query(
                 call.id,
-                f"Ошибка: {str(e)[:60]}",
+                user_message[:200],
                 show_alert=True
             )
 
@@ -290,6 +337,11 @@ def register_global_handlers(bot):
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
+        # Reject group chats and expired sessions before recording or doing any work.
+        if not has_admin_access(call, admin_mgr):
+            bot.answer_callback_query(call.id, "Операция не поддерживается", show_alert=False)
+            return
+
         # Логируем активность
         db.create_or_update_user(
             user_id=call.from_user.id,
@@ -298,12 +350,6 @@ def register_global_handlers(bot):
             last_name=call.from_user.last_name
         )
 
-        # Проверяем права администратора
-        if not admin_mgr.is_admin(call.from_user.id):
-            # Скрываем существование админ-панели — просто игнорируем
-            bot.answer_callback_query(call.id, "Операция не поддерживается", show_alert=False)
-            return
-
         try:
             bot.answer_callback_query(call.id)
 
@@ -311,41 +357,43 @@ def register_global_handlers(bot):
 
             # Главное админ-меню
             if call.data == "admin_stats":
-                stats = admin_mgr.get_global_stats()
-
-                text = "👑 <b>Админ-панель — Статистика</b>\n\n"
-                text += f"👥 Всего пользователей: <b>{stats['total_users']}</b>\n"
-                text += f"✅ Активно за неделю: <b>{stats['active_users']}</b>\n"
-                text += f"🔐 Всего операций: <b>{stats['total_operations']}</b>\n"
-                text += f"📅 Сегодня: <b>{stats['today_operations']}</b>\n\n"
-
-                text += "<b>Распределение по шифрам:</b>\n"
-                total = sum(stats['cipher_distribution'].values()) if stats['cipher_distribution'] else 0
-                for cipher, count in stats['cipher_distribution'].items():
-                    percent = (count / total * 100) if total > 0 else 0
-                    cipher_name = {
-                        "morze": "Азбука Морзе",
-                        "numbers": "Числовой",
-                        "caesar": "Цезарь",
-                        "qr": "QR-код"
-                    }.get(cipher, cipher)
-                    text += f"• {cipher_name}: {count} ({percent:.1f}%)\n"
+                text = render_overview(admin_panel.get_dashboard())
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text=text,
-                    reply_markup=stats_navigation_keyboard(),
+                    reply_markup=admin_observability_keyboard(),
+                    parse_mode="HTML"
+                )
+
+            elif call.data == "admin_modules":
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=render_modules(admin_panel.get_dashboard()),
+                    reply_markup=admin_observability_keyboard(),
+                    parse_mode="HTML"
+                )
+
+            elif call.data == "admin_health":
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=render_health(admin_panel.get_dashboard()),
+                    reply_markup=admin_observability_keyboard(),
                     parse_mode="HTML"
                 )
 
             # Поиск пользователя
             elif call.data == "admin_user_search":
                 # Устанавливаем состояние пользователя для поиска
-                user_input_state[call.from_user.id] = {
-                    'mode': 'search_user',
-                    'message_id': message_id
-                }
+                user_input_state.begin(
+                    call.from_user.id,
+                    chat_id,
+                    "search_user",
+                    message_id,
+                )
 
                 bot.edit_message_text(
                     chat_id=chat_id,
@@ -359,12 +407,15 @@ def register_global_handlers(bot):
             # Отмена поиска
             elif call.data == "admin_cancel_search":
                 # Удаляем состояние поиска
-                user_input_state.pop(call.from_user.id, None)
+                user_input_state.clear(call.from_user.id, chat_id)
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text="👑 <b>Админ-панель</b>\n\nДобро пожаловать в панель управления FazTestBot!",
+                    text=(
+                        "👑 <b>Админ-панель</b>\n\n"
+                        "Добро пожаловать в панель управления FazTestBot!"
+                    ),
                     reply_markup=admin_menu_keyboard(),
                     parse_mode="HTML"
                 )
@@ -372,10 +423,12 @@ def register_global_handlers(bot):
             # Поиск по логам
             elif call.data == "admin_search":
                 # Устанавливаем состояние пользователя для поиска по логам
-                user_input_state[call.from_user.id] = {
-                    'mode': 'search_logs',
-                    'message_id': message_id
-                }
+                user_input_state.begin(
+                    call.from_user.id,
+                    chat_id,
+                    "search_logs",
+                    message_id,
+                )
 
                 bot.edit_message_text(
                     chat_id=chat_id,
@@ -417,13 +470,18 @@ def register_global_handlers(bot):
                          "Текущие параметры:\n"
                          f"• Автоочистка логов: {config.LOG_RETENTION_DAYS} дней\n"
                          f"• Длительность сессии админа: {config.ADMIN_SESSION_HOURS} часов\n\n"
-                         "<i>Настройки можно изменить в файле config.py</i>",
+                         "<i>Настройки можно изменить в файле .env</i>",
                     reply_markup=user_search_keyboard(),
                     parse_mode="HTML"
                 )
 
             # Экстренные действия
             elif call.data == "admin_emergency":
+                token = admin_confirmations.issue(
+                    call.from_user.id,
+                    chat_id,
+                    "emergency_clear",
+                )
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -432,23 +490,16 @@ def register_global_handlers(bot):
                          "• Удалит ВСЕ операции шифрования\n"
                          "• Удалит всех пользователей (кроме админов)\n\n"
                          "Вы уверены, что хотите продолжить?",
-                    reply_markup=emergency_confirm_keyboard(),
+                    reply_markup=destructive_confirm_keyboard(token, "✅ Да, очистить ВСЁ"),
                     parse_mode="HTML"
                 )
 
-            # Подтверждение экстренной очистки
+            # Старые сообщения не должны повторно запускать опасную операцию.
             elif call.data == "admin_emergency_confirm":
-                ops_deleted, users_deleted = admin_mgr.emergency_clear_all()
-                admin_mgr.log_admin_action(call.from_user.id, "emergency_clear", None,
-                                           f"Deleted {ops_deleted} ops, {users_deleted} users")
-
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"🚨 <b>Экстренная очистка выполнена</b>\n\n"
-                         f"Удалено операций: {ops_deleted}\n"
-                         f"Удалено пользователей: {users_deleted}\n\n"
-                         "Бот готов к работе.",
+                    text="⚠️ Срок старого подтверждения истёк. Откройте действие заново.",
                     reply_markup=admin_menu_keyboard(),
                     parse_mode="HTML"
                 )
@@ -456,18 +507,96 @@ def register_global_handlers(bot):
             # Очистка логов за период
             elif call.data.startswith("admin_cleanup_"):
                 days = int(call.data.replace("admin_cleanup_", ""))
-                deleted = admin_mgr.cleanup_logs(days)
-                admin_mgr.log_admin_action(call.from_user.id, "cleanup_logs", None, f"{days} days, {deleted} records")
-
+                if days not in {7, 30, 90}:
+                    raise ValueError("unsupported cleanup period")
+                token = admin_confirmations.issue(
+                    call.from_user.id,
+                    chat_id,
+                    "cleanup_logs",
+                    str(days),
+                )
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"🧹 <b>Очистка завершена</b>\n\n"
-                         f"Удалено записей старше {days} дней: <b>{deleted}</b>\n\n"
-                         "Возврат в главное меню админ-панели.",
-                    reply_markup=admin_menu_keyboard(),
+                    text=(
+                        "⚠️ <b>Подтверждение очистки</b>\n\n"
+                        f"Будут удалены записи старше {days} дней. Продолжить?"
+                    ),
+                    reply_markup=destructive_confirm_keyboard(token),
                     parse_mode="HTML"
                 )
+
+            elif call.data.startswith("admin_confirm_"):
+                token = call.data.removeprefix("admin_confirm_")
+                confirmation = admin_confirmations.consume(
+                    token,
+                    call.from_user.id,
+                    chat_id,
+                )
+                if confirmation is None:
+                    bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text="⚠️ Подтверждение недействительно или истекло.",
+                        reply_markup=admin_menu_keyboard(),
+                    )
+                elif confirmation.action == "emergency_clear":
+                    ops_deleted, users_deleted = admin_mgr.emergency_clear_all()
+                    admin_mgr.log_admin_action(
+                        call.from_user.id,
+                        "emergency_clear",
+                        None,
+                        f"Deleted {ops_deleted} ops, {users_deleted} users",
+                    )
+                    bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=(
+                            "🚨 <b>Экстренная очистка выполнена</b>\n\n"
+                            f"Удалено операций: {ops_deleted}\n"
+                            f"Удалено пользователей: {users_deleted}\n\n"
+                            "Бот готов к работе."
+                        ),
+                        reply_markup=admin_menu_keyboard(),
+                        parse_mode="HTML",
+                    )
+                elif confirmation.action == "cleanup_logs":
+                    days = int(confirmation.payload)
+                    deleted = admin_mgr.cleanup_logs(days)
+                    admin_mgr.log_admin_action(
+                        call.from_user.id,
+                        "cleanup_logs",
+                        None,
+                        f"{days} days, {deleted} records",
+                    )
+                    bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=(
+                            "🧹 <b>Очистка завершена</b>\n\n"
+                            f"Удалено записей старше {days} дней: <b>{deleted}</b>"
+                        ),
+                        reply_markup=admin_menu_keyboard(),
+                        parse_mode="HTML",
+                    )
+                elif confirmation.action == "delete_backup":
+                    _success, result_message = backup_manager.delete_backup(
+                        confirmation.payload
+                    )
+                    backup_files = backup_manager.get_backup_list()
+                    bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=render_backup_result(result_message, len(backup_files)),
+                        reply_markup=(
+                            backup_list_keyboard(backup_files)
+                            if backup_files
+                            else backup_menu_keyboard()
+                        ),
+                        parse_mode="HTML",
+                    )
+                else:
+                    raise ValueError("unsupported admin confirmation action")
 
             # Экспорт в CSV
             elif call.data == "admin_export_csv":
@@ -486,15 +615,24 @@ def register_global_handlers(bot):
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text="👑 <b>Админ-панель</b>\n\nЭкспорт данных завершён. Файл отправлен выше.",
+                        text=(
+                            "👑 <b>Админ-панель</b>\n\n"
+                            "Экспорт данных завершён. Файл отправлен выше."
+                        ),
                         reply_markup=admin_menu_keyboard(),
                         parse_mode="HTML"
                     )
                 except Exception as e:
+                    user_message = handle_exception(
+                        e,
+                        logger,
+                        event="admin.export_failed",
+                        context={"export_format": "csv"},
+                    )
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=f"❌ Ошибка экспорта: {str(e)}",
+                        text=user_message,
                         reply_markup=admin_menu_keyboard(),
                         parse_mode="HTML"
                     )
@@ -516,64 +654,62 @@ def register_global_handlers(bot):
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text="👑 <b>Админ-панель</b>\n\nЭкспорт данных завершён. Файл отправлен выше.",
+                        text=(
+                            "👑 <b>Админ-панель</b>\n\n"
+                            "Экспорт данных завершён. Файл отправлен выше."
+                        ),
                         reply_markup=admin_menu_keyboard(),
                         parse_mode="HTML"
                     )
                 except Exception as e:
+                    user_message = handle_exception(
+                        e,
+                        logger,
+                        event="admin.export_failed",
+                        context={"export_format": "json"},
+                    )
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=f"❌ Ошибка экспорта: {str(e)}",
+                        text=user_message,
                         reply_markup=admin_menu_keyboard(),
                         parse_mode="HTML"
                     )
 
             # Обновление статистики
             elif call.data == "admin_stats_refresh":
-                stats = admin_mgr.get_global_stats()
-
-                text = "👑 <b>Админ-панель — Статистика</b>\n\n"
-                text += f"👥 Всего пользователей: <b>{stats['total_users']}</b>\n"
-                text += f"✅ Активно за неделю: <b>{stats['active_users']}</b>\n"
-                text += f"🔐 Всего операций: <b>{stats['total_operations']}</b>\n"
-                text += f"📅 Сегодня: <b>{stats['today_operations']}</b>\n\n"
-
-                text += "<b>Распределение по шифрам:</b>\n"
-                total = sum(stats['cipher_distribution'].values()) if stats['cipher_distribution'] else 0
-                for cipher, count in stats['cipher_distribution'].items():
-                    percent = (count / total * 100) if total > 0 else 0
-                    cipher_name = {
-                        "morze": "Азбука Морзе",
-                        "numbers": "Числовой",
-                        "caesar": "Цезарь",
-                        "qr": "QR-код"
-                    }.get(cipher, cipher)
-                    text += f"• {cipher_name}: {count} ({percent:.1f}%)\n"
+                text = render_overview(admin_panel.get_dashboard())
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text=text,
-                    reply_markup=stats_navigation_keyboard(),
+                    reply_markup=admin_observability_keyboard(),
                     parse_mode="HTML"
                 )
 
             # Возврат в главное админ-меню
             elif call.data == "admin_back_to_menu":
                 # Удаляем состояние ввода, если оно существует
-                user_input_state.pop(call.from_user.id, None)
+                user_input_state.clear(call.from_user.id, chat_id)
+                admin_confirmations.clear(call.from_user.id)
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text="👑 <b>Админ-панель</b>\n\nДобро пожаловать в панель управления FazTestBot!",
+                    text=(
+                        "👑 <b>Админ-панель</b>\n\n"
+                        "Добро пожаловать в панель управления FazTestBot!"
+                    ),
                     reply_markup=admin_menu_keyboard(),
                     parse_mode="HTML"
                 )
 
             # Выход из админ-панели
             elif call.data == "admin_exit":
+                user_input_state.clear(call.from_user.id)
+                admin_confirmations.clear(call.from_user.id)
+                admin_mgr.revoke_session(call.from_user.id)
                 # Показываем обычное меню
                 bot.edit_message_text(
                     chat_id=chat_id,
@@ -592,12 +728,7 @@ def register_global_handlers(bot):
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text="🗄️ <b>Админ-панель — Бэкапы</b>\n\n"
-                         "Управление резервными копиями базы данных:\n"
-                         "• Автоматические бэкапы ежедневно в 03:00\n"
-                         "• Хранение последних 7 бэкапов\n"
-                         "• Ручное создание по необходимости\n\n"
-                         "Выберите действие:",
+                    text=render_backup_overview(admin_panel.settings),
                     reply_markup=backup_menu_keyboard(),
                     parse_mode="HTML"
                 )
@@ -605,12 +736,12 @@ def register_global_handlers(bot):
             # Создание бэкапа
             elif call.data == "admin_backup_create":
                 bot.answer_callback_query(call.id, "⏳ Создание бэкапа...")
-                success, message = backup_manager.create_backup(manual=True)
+                _success, message = backup_manager.create_backup(manual=True)
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"🗄️ <b>Админ-панель — Бэкапы</b>\n\n{message}",
+                    text=render_backup_result(message),
                     reply_markup=backup_menu_keyboard(),
                     parse_mode="HTML"
                 )
@@ -644,18 +775,10 @@ def register_global_handlers(bot):
             elif call.data == "admin_backup_stats":
                 stats = backup_manager.get_backup_stats()
 
-                text = "🗄️ <b>Админ-панель — Статистика бэкапов</b>\n\n"
-                text += f"📊 Всего бэкапов: {stats['total_count']}\n"
-                text += f"🤖 Автоматических: {stats['auto_count']}\n"
-                text += f"👤 Ручных: {stats['manual_count']}\n"
-                text += f"💾 Общий размер: {stats['total_size_formatted']}\n"
-                text += f"📅 Последний: {stats['newest']}\n"
-                text += f"📅 Старейший: {stats['oldest']}\n"
-
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=text,
+                    text=render_backup_stats(stats),
                     reply_markup=backup_menu_keyboard(),
                     parse_mode="HTML"
                 )
@@ -668,17 +791,10 @@ def register_global_handlers(bot):
                 backup = next((b for b in backup_files if b['filename'] == filename), None)
 
                 if backup:
-                    text = f"🗄️ <b>Информация о бэкапе</b>\n\n"
-                    text += f"📁 Файл: {backup['filename']}\n"
-                    text += f"📊 Размер: {backup['size_formatted']}\n"
-                    text += f"🕐 Создан: {backup['created'].strftime('%d.%m.%Y %H:%M')}\n"
-                    text += f"🏷️ Тип: {backup['type']}\n\n"
-                    text += "Выберите действие:"
-
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=text,
+                        text=render_backup_info(backup),
                         reply_markup=backup_info_keyboard(filename),
                         parse_mode="HTML"
                     )
@@ -694,90 +810,56 @@ def register_global_handlers(bot):
             # Удаление бэкапа
             elif call.data.startswith("admin_backup_delete_"):
                 filename = call.data.replace("admin_backup_delete_", "")
-                success, message = backup_manager.delete_backup(filename)
-
-                bot.answer_callback_query(call.id, message.replace("✅ ", "").replace("❌ ", ""), show_alert=True)
-
-                # Возвращаемся к списку бэкапов
-                backup_files = backup_manager.get_backup_list()
-                if not backup_files:
-                    bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=message_id,
-                        text="🗄️ <b>Админ-панель — Бэкапы</b>\n\n"
-                             "⚠️ Бэкапы не найдены.\n\n"
-                             "Создайте первый бэкап вручную.",
-                        reply_markup=backup_menu_keyboard(),
-                        parse_mode="HTML"
-                    )
-                else:
-                    bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=message_id,
-                        text=f"🗄️ <b>Админ-панель — Бэкапы</b>\n\n{message}\n\n"
-                             f"Найдено бэкапов: {len(backup_files)}",
-                        reply_markup=backup_list_keyboard(backup_files),
-                        parse_mode="HTML"
-                    )
+                token = admin_confirmations.issue(
+                    call.from_user.id,
+                    chat_id,
+                    "delete_backup",
+                    filename,
+                )
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text="⚠️ <b>Удалить выбранный бэкап?</b>\n\nДействие необратимо.",
+                    reply_markup=destructive_confirm_keyboard(token, "🗑️ Удалить"),
+                    parse_mode="HTML",
+                )
 
             # Восстановление из бэкапа
             elif call.data.startswith("admin_backup_restore_"):
                 filename = call.data.replace("admin_backup_restore_", "")
-                success, message = backup_manager.restore_backup(filename)
-
-                bot.answer_callback_query(call.id, message.replace("✅ ", "").replace("❌ ", ""), show_alert=True)
-
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"🗄️ <b>Админ-панель — Бэкапы</b>\n\n{message}",
+                    text=render_restore_instructions(filename),
                     reply_markup=backup_menu_keyboard(),
                     parse_mode="HTML"
                 )
 
-            # Обновление статистики
-            elif call.data == "admin_stats_refresh":
-                stats = admin_mgr.get_global_stats()
-
-                text = "👑 <b>Админ-панель — Статистика</b>\n\n"
-                text += f"👥 Всего пользователей: <b>{stats['total_users']}</b>\n"
-                text += f"✅ Активно за неделю: <b>{stats['active_users']}</b>\n"
-                text += f"🔐 Всего операций: <b>{stats['total_operations']}</b>\n"
-                text += f"📅 Сегодня: <b>{stats['today_operations']}</b>\n\n"
-
-                text += "<b>Распределение по шифрам:</b>\n"
-                total = sum(stats['cipher_distribution'].values()) if stats['cipher_distribution'] else 0
-                for cipher, count in stats['cipher_distribution'].items():
-                    percent = (count / total * 100) if total > 0 else 0
-                    cipher_name = {
-                        "morze": "Азбука Морзе",
-                        "numbers": "Числовой",
-                        "caesar": "Цезарь",
-                        "qr": "QR-код"
-                    }.get(cipher, cipher)
-                    text += f"• {cipher_name}: {count} ({percent:.1f}%)\n"
-
-                bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=text,
-                    reply_markup=stats_navigation_keyboard(),
-                    parse_mode="HTML"
-                )
-
         except Exception as e:
+            disposition = classify_exception(e)
+            user_message = handle_exception(
+                e,
+                logger,
+                event="admin.callback_failed",
+            )
             bot.answer_callback_query(
                 call.id,
-                f"Ошибка админ-панели: {str(e)[:60]}",
+                user_message[:200],
                 show_alert=True
             )
-            admin_mgr.log_admin_action(call.from_user.id, "error", None, str(e))
+            admin_mgr.log_admin_action(call.from_user.id, "error", None, disposition.code)
 
     def handle_user_search_input(message, bot_instance):
         """Обработка ввода ID пользователя для поиска (с проверкой состояния)"""
-        # Проверяем, находится ли пользователь в режиме поиска
-        if message.from_user.id not in user_input_state or \
-                user_input_state[message.from_user.id].get('mode') != 'search_user':
+        if not has_admin_access(message, admin_mgr):
+            user_input_state.clear(message.from_user.id)
+            return
+        search_state = user_input_state.consume(
+            message.from_user.id,
+            message.chat.id,
+            "search_user",
+        )
+        if search_state is None:
             # Не в режиме поиска — игнорируем или показываем обычное меню
             bot_instance.send_message(
                 message.chat.id,
@@ -793,38 +875,12 @@ def register_global_handlers(bot):
             last_name=message.from_user.last_name
         )
 
-        # Удаляем состояние поиска после обработки
-        search_state = user_input_state.pop(message.from_user.id, None)
-
         try:
             user_id = int(message.text.strip())
             profile = admin_mgr.get_user_profile(user_id)
 
             if profile:
-                text = f"👤 <b>Профиль пользователя</b> (ID: {user_id})\n\n"
-                text += f"Имя: {profile['full_name']}\n"
-                text += f"Юзернейм: @{profile['username']}\n"
-                text += f"Первое взаимодействие: {profile['created_at']}\n"
-                text += f"Последняя активность: {profile['last_active']}\n\n"
-
-                text += "<b>Статистика модулей:</b>\n"
-                for module, count in profile['module_stats'].items():
-                    text += f"• {module}: {count} операций\n"
-
-                text += "\n<b>Последние операции:</b>\n"
-                for i, op in enumerate(profile['last_operations'], 1):
-                    ts = op['timestamp']
-                    time_str = ts.split()[1][:5]
-
-                    cipher_name = {
-                        "morze": "Морзе",
-                        "numbers": "Числа",
-                        "caesar": "Цезарь",
-                        "qr": "QR"
-                    }.get(op['cipher_type'], op['cipher_type'])
-
-                    text += f"{i}. [{time_str}] {cipher_name}:\n"
-                    text += f"   «{op['original_text']}» → «{op['encrypted_text']}»\n"
+                text = render_user_profile(user_id, profile)
 
                 bot_instance.send_message(
                     message.chat.id,
@@ -850,9 +906,15 @@ def register_global_handlers(bot):
 
     def handle_search_input(message, bot_instance):
         """Обработка ввода для поиска по логам (с проверкой состояния)"""
-        # Проверяем, находится ли пользователь в режиме поиска по логам
-        if message.from_user.id not in user_input_state or \
-                user_input_state[message.from_user.id].get('mode') != 'search_logs':
+        if not has_admin_access(message, admin_mgr):
+            user_input_state.clear(message.from_user.id)
+            return
+        search_state = user_input_state.consume(
+            message.from_user.id,
+            message.chat.id,
+            "search_logs",
+        )
+        if search_state is None:
             # Не в режиме поиска — игнорируем или показываем обычное меню
             bot_instance.send_message(
                 message.chat.id,
@@ -868,47 +930,14 @@ def register_global_handlers(bot):
             last_name=message.from_user.last_name
         )
 
-        # Удаляем состояние поиска после обработки
-        search_state = user_input_state.pop(message.from_user.id, None)
-
         query = message.text.strip()
         results = admin_mgr.search_operations(query)
-
-        if results:
-            text = f"🔍 <b>Результаты поиска</b> по «{query}»\n\nНайдено операций: {len(results)}\n\n"
-
-            for i, op in enumerate(results[:10], 1):  # Показываем первые 10
-                ts = op['timestamp']
-                date_str = ts.split()[0]
-                time_str = ts.split()[1][:5]
-
-                cipher_name = {
-                    "morze": "Морзе",
-                    "numbers": "Числа",
-                    "caesar": "Цезарь",
-                    "qr": "QR"
-                }.get(op['cipher_type'], op['cipher_type'])
-
-                text += f"{i}. [{date_str} {time_str}] ID {op['user_id']} | {cipher_name}\n"
-                text += f"   Исходный: «{op['original_text']}»\n"
-                text += f"   Результат: «{op['encrypted_text']}»\n\n"
-
-            if len(results) > 10:
-                text += f"<i>... и ещё {len(results) - 10} операций</i>"
-
-            bot_instance.send_message(
-                message.chat.id,
-                text,
-                reply_markup=user_search_keyboard(),
-                parse_mode="HTML"
-            )
-        else:
-            bot_instance.send_message(
-                message.chat.id,
-                f"⚠️ По запросу «{query}» ничего не найдено.",
-                reply_markup=user_search_keyboard(),
-                parse_mode="HTML"
-            )
+        bot_instance.send_message(
+            message.chat.id,
+            render_search_results(query, results),
+            reply_markup=user_search_keyboard(),
+            parse_mode="HTML"
+        )
 
     @bot.callback_query_handler(func=lambda call: True)
     def handle_global_callbacks(call):
@@ -1052,9 +1081,14 @@ def register_global_handlers(bot):
                     )
 
         except Exception as e:
+            user_message = handle_exception(
+                e,
+                logger,
+                event="handler.callback_failed",
+            )
             bot.answer_callback_query(
                 call.id,
-                f"Ошибка: {str(e)[:60]}",
+                user_message[:200],
                 show_alert=True
             )
 
@@ -1068,6 +1102,19 @@ def register_global_handlers(bot):
         if easter_egg_manager.check_blocked_user(message.from_user.id):
             return  # Полностью игнорируем заблокированного пользователя
 
+        # Pending admin input is authorized before recording any activity.
+        admin_state = user_input_state.peek(message.from_user.id, message.chat.id)
+        if admin_state is not None:
+            if not has_admin_access(message, admin_mgr):
+                user_input_state.clear(message.from_user.id)
+                return
+            if admin_state.mode == "search_user":
+                handle_user_search_input(message, bot)
+                return
+            if admin_state.mode == "search_logs":
+                handle_search_input(message, bot)
+                return
+
         # Логируем пользователя
         db.create_or_update_user(
             user_id=message.from_user.id,
@@ -1075,17 +1122,6 @@ def register_global_handlers(bot):
             first_name=message.from_user.first_name,
             last_name=message.from_user.last_name
         )
-
-        # Проверяем, находится ли пользователь в режиме поиска
-        if message.from_user.id in user_input_state:
-            mode = user_input_state[message.from_user.id].get('mode')
-
-            if mode == 'search_user':
-                handle_user_search_input(message, bot)
-                return
-            elif mode == 'search_logs':
-                handle_search_input(message, bot)
-                return
 
         # Проверяем на пасхалку-головоломку
         easter_result = easter_egg_manager.process_easter_egg_message(

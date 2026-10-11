@@ -5,6 +5,11 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict
 import os
 
+from core.exceptions import handle_exception
+from core.observability import get_logger
+
+logger = get_logger(__name__)
+
 
 class EasterEggManager:
     """Менеджер пасхалок и головоломок"""
@@ -121,7 +126,7 @@ class EasterEggManager:
             with open(history_file, 'r', encoding='utf-8') as f:
                 return f.read()
         except Exception as e:
-            return f"❌ Ошибка чтения истории: {str(e)}"
+            return handle_exception(e, logger, event="history.read_failed")
 
     def get_dev_history_file_path(self) -> str:
         """Получение пути к файлу history.txt"""

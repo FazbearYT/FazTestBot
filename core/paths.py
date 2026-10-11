@@ -2,7 +2,6 @@
 # Централизованное управление путями FazTestBot
 # Версия: 4.2.2
 
-import os
 from pathlib import Path
 
 # Корневая директория бота
@@ -28,6 +27,10 @@ EXPORTS_DIR.mkdir(exist_ok=True)
 # Резервные копии
 BACKUPS_DIR = TEMP_DIR / "backups"
 BACKUPS_DIR.mkdir(exist_ok=True)
+
+# Application logs (ignored by Git and rotated by the logging subsystem)
+LOGS_DIR = TEMP_DIR / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
 
 # ====== ФАЙЛЫ КОНФИГУРАЦИИ ======
 SECRETS_FILE = ROOT_DIR / "secrets.py"
@@ -60,7 +63,6 @@ def get_temp_path(subdir: str = None) -> Path:
 
 def cleanup_temp():
     """Очистка временных файлов (кроме БД и бэкапов)"""
-    import shutil
 
     dirs_to_clean = [DOWNLOADS_DIR, EXPORTS_DIR]
 
@@ -71,26 +73,34 @@ def cleanup_temp():
                     if file.is_file():
                         file.unlink()
                 except Exception as e:
-                    print(f"⚠️ Ошибка очистки {file}: {e}")
+                    from core.observability import event_fields, get_logger
+
+                    get_logger(__name__).warning(
+                        "failed to remove temporary file %s",
+                        file,
+                        exc_info=(type(e), e, e.__traceback__),
+                        extra=event_fields("filesystem.cleanup_failed", path=str(file)),
+                    )
 
 
 # Экспорт всех путей
 __all__ = [
-    'ROOT_DIR',
-    'TEMP_DIR',
-    'DATABASE_DIR',
-    'DATABASE_PATH',
-    'DOWNLOADS_DIR',
-    'EXPORTS_DIR',
-    'BACKUPS_DIR',
-    'SECRETS_FILE',
-    'SECRETS_TEMPLATE_FILE',
-    'ENV_FILE',
-    'HISTORY_FILE',
-    'ROADMAP_FILE',
-    'REQUIREMENTS_FILE',
-    'MODULES_DIR',
-    'CORE_DIR',
-    'get_temp_path',
-    'cleanup_temp'
+    "ROOT_DIR",
+    "TEMP_DIR",
+    "DATABASE_DIR",
+    "DATABASE_PATH",
+    "DOWNLOADS_DIR",
+    "EXPORTS_DIR",
+    "BACKUPS_DIR",
+    "LOGS_DIR",
+    "SECRETS_FILE",
+    "SECRETS_TEMPLATE_FILE",
+    "ENV_FILE",
+    "HISTORY_FILE",
+    "ROADMAP_FILE",
+    "REQUIREMENTS_FILE",
+    "MODULES_DIR",
+    "CORE_DIR",
+    "get_temp_path",
+    "cleanup_temp",
 ]

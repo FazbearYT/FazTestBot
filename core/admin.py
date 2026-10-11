@@ -1,151 +1,205 @@
 # core/admin.py
 # Система скрытой админ-панели с надёжной аутентификацией
 
-import sqlite3
-import json
 import csv
+import hmac
+import json
+from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List
-from telebot import types
-from core.paths import EXPORTS_DIR, DATABASE_PATH
-from config import ADMINS, ADMIN_SECRET_CODE, ADMIN_SESSION_HOURS
+from threading import RLock
+
+from config import ADMIN_SECRET_CODE, ADMIN_SESSION_HOURS, ADMINS
+from core.migrations import DatabaseMigrator
+from core.paths import DATABASE_PATH, EXPORTS_DIR
+from core.storage import SQLiteDatabase
 
 
 class AdminManager:
     """Менеджер административного доступа и функций"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(
+        self,
+        db_path: str = None,
+        *,
+        admins: tuple[int, ...] | list[int] | None = None,
+        secret_code: str | None = None,
+        session_hours: int | None = None,
+        auth_max_failures: int = 5,
+        auth_window_minutes: int = 15,
+        auth_lockout_minutes: int = 15,
+        auth_failure_capacity: int = 4096,
+        now: Callable[[], datetime] = datetime.now,
+    ):
         self.db_path = db_path or DATABASE_PATH
+        self.database = SQLiteDatabase(self.db_path)
+        self.admins = tuple(ADMINS if admins is None else admins)
+        self.secret_code = ADMIN_SECRET_CODE if secret_code is None else secret_code
+        self.session_hours = ADMIN_SESSION_HOURS if session_hours is None else session_hours
+        self.auth_max_failures = max(1, auth_max_failures)
+        self.auth_window = timedelta(minutes=auth_window_minutes)
+        self.auth_lockout = timedelta(minutes=auth_lockout_minutes)
+        self.auth_failure_capacity = max(1, auth_failure_capacity)
+        self.now = now
         self.admin_sessions = {}
+        self._auth_failures: dict[int, dict[str, object]] = {}
+        self._auth_lock = RLock()
         self._init_admin_log_table()
 
     def _init_admin_log_table(self):
         """Инициализация таблицы логов админ-действий"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS admin_logs (
-                log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                admin_id INTEGER NOT NULL,
-                action TEXT NOT NULL,
-                target_user_id INTEGER,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                details TEXT
-            )
-        """)
-
-        conn.commit()
-        conn.close()
+        DatabaseMigrator(self.db_path).apply_migrations()
 
     def authenticate_by_code(self, user_id: int, code: str) -> bool:
         """Аутентификация через секретное кодовое слово"""
-        if code.strip() == ADMIN_SECRET_CODE:
-            expires = datetime.now() + timedelta(hours=ADMIN_SESSION_HOURS)
-            self.admin_sessions[user_id] = {'until': expires}
-            self._log_admin_action(user_id, "auth_by_code", None, f"Session until {expires}")
-            return True
-        return False
+        if not self.secret_code:
+            return False
+        now = self.now()
+        with self._auth_lock:
+            self._prune_auth_failures(now)
+            attempt = self._auth_failures.get(user_id)
+            if attempt is not None:
+                locked_until = attempt.get("locked_until")
+                if isinstance(locked_until, datetime) and now < locked_until:
+                    return False
+            supplied = code.strip().encode("utf-8")
+            expected = self.secret_code.encode("utf-8")
+            if hmac.compare_digest(supplied, expected):
+                self._auth_failures.pop(user_id, None)
+                expires = now + timedelta(hours=self.session_hours)
+                self.admin_sessions[user_id] = {"until": expires}
+            else:
+                if attempt is None:
+                    if len(self._auth_failures) >= self.auth_failure_capacity:
+                        self._auth_failures.pop(next(iter(self._auth_failures)))
+                    attempt = {"count": 0, "first_failure": now, "locked_until": None}
+                    self._auth_failures[user_id] = attempt
+                attempt["count"] = int(attempt["count"]) + 1
+                if attempt["count"] >= self.auth_max_failures:
+                    attempt["locked_until"] = now + self.auth_lockout
+                return False
+        self._log_admin_action(user_id, "auth_by_code", None, f"Session until {expires}")
+        return True
+
+    def _prune_auth_failures(self, now: datetime) -> None:
+        expired = []
+        for user_id, attempt in self._auth_failures.items():
+            first_failure = attempt.get("first_failure")
+            locked_until = attempt.get("locked_until")
+            window_expired = (
+                not isinstance(first_failure, datetime) or now - first_failure >= self.auth_window
+            )
+            lock_active = isinstance(locked_until, datetime) and now < locked_until
+            if window_expired and not lock_active:
+                expired.append(user_id)
+        for user_id in expired:
+            self._auth_failures.pop(user_id, None)
 
     def is_admin(self, user_id: int) -> bool:
         """Проверка прав администратора"""
-        if user_id in ADMINS:
-            return True
-
-        if user_id in self.admin_sessions:
-            if datetime.now() < self.admin_sessions[user_id]['until']:
+        with self._auth_lock:
+            if user_id in self.admins:
                 return True
-            else:
+
+            if user_id in self.admin_sessions:
+                if self.now() < self.admin_sessions[user_id]["until"]:
+                    return True
                 self.admin_sessions.pop(user_id, None)
 
         return False
 
-    def log_admin_action(self, admin_id: int, action: str, target_user_id: Optional[int] = None, details: str = ""):
+    def revoke_session(self, user_id: int) -> bool:
+        """Revoke a code-authenticated session; configured admins remain admins."""
+
+        with self._auth_lock:
+            return self.admin_sessions.pop(user_id, None) is not None
+
+    def log_admin_action(
+        self, admin_id: int, action: str, target_user_id: int | None = None, details: str = ""
+    ):
         """Логирование админ-действий"""
         self._log_admin_action(admin_id, action, target_user_id, details)
 
-    def _log_admin_action(self, admin_id: int, action: str, target_user_id: Optional[int], details: str):
+    def _log_admin_action(
+        self, admin_id: int, action: str, target_user_id: int | None, details: str
+    ):
         """Внутренний метод логирования"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        with self.database.connection(write=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO admin_logs (admin_id, action, target_user_id, details)
+                VALUES (?, ?, ?, ?)
+                """,
+                (admin_id, action, target_user_id, details[:500]),
+            )
 
-        cursor.execute("""
-            INSERT INTO admin_logs (admin_id, action, target_user_id, details)
-            VALUES (?, ?, ?, ?)
-        """, (admin_id, action, target_user_id, details[:500]))
-
-        conn.commit()
-        conn.close()
-
-    def get_global_stats(self) -> Dict:
+    def get_global_stats(self) -> dict:
         """Получение общей статистики"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        with self.database.connection() as connection:
+            total_users = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM users")
-        total_users = cursor.fetchone()[0]
+            week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+            active_users = connection.execute(
+                """
+                SELECT COUNT(*) FROM users
+                WHERE DATE(last_active) >= ?
+                """,
+                (week_ago,),
+            ).fetchone()[0]
 
-        week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-        cursor.execute("""
-            SELECT COUNT(*) FROM users 
-            WHERE DATE(last_active) >= ?
-        """, (week_ago,))
-        active_users = cursor.fetchone()[0]
+            total_ops = connection.execute("SELECT COUNT(*) FROM cipher_operations").fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM cipher_operations")
-        total_ops = cursor.fetchone()[0]
+            today = datetime.now().strftime("%Y-%m-%d")
+            today_ops = connection.execute(
+                """
+                SELECT COUNT(*) FROM cipher_operations
+                WHERE DATE(timestamp) = ?
+                """,
+                (today,),
+            ).fetchone()[0]
 
-        today = datetime.now().strftime('%Y-%m-%d')
-        cursor.execute("""
-            SELECT COUNT(*) FROM cipher_operations 
-            WHERE DATE(timestamp) = ?
-        """, (today,))
-        today_ops = cursor.fetchone()[0]
-
-        cursor.execute("""
-            SELECT cipher_type, COUNT(*) as count 
-            FROM cipher_operations 
-            GROUP BY cipher_type
-            ORDER BY count DESC
-        """)
-        cipher_dist = {row[0]: row[1] for row in cursor.fetchall()}
-
-        conn.close()
+            rows = connection.execute(
+                """
+                SELECT cipher_type, COUNT(*) as count
+                FROM cipher_operations
+                GROUP BY cipher_type
+                ORDER BY count DESC
+                """
+            ).fetchall()
+            cipher_dist = {row[0]: row[1] for row in rows}
 
         return {
             "total_users": total_users,
             "active_users": active_users,
             "total_operations": total_ops,
             "today_operations": today_ops,
-            "cipher_distribution": cipher_dist
+            "cipher_distribution": cipher_dist,
         }
 
-    def get_user_profile(self, user_id: int) -> Optional[Dict]:
+    def get_user_profile(self, user_id: int) -> dict | None:
         """Получение полного профиля пользователя"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        with self.database.connection() as connection:
+            user_row = connection.execute(
+                """
+                SELECT user_id, username, full_name, created_at, last_active, module_stats
+                FROM users
+                WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
 
-        cursor.execute("""
-            SELECT user_id, username, full_name, created_at, last_active, module_stats
-            FROM users 
-            WHERE user_id = ?
-        """, (user_id,))
-        user_row = cursor.fetchone()
+            if not user_row:
+                return None
 
-        if not user_row:
-            conn.close()
-            return None
-
-        cursor.execute("""
-            SELECT cipher_type, original_text, encrypted_text, timestamp
-            FROM cipher_operations 
-            WHERE user_id = ?
-            ORDER BY timestamp DESC
-            LIMIT 5
-        """, (user_id,))
-        last_ops = cursor.fetchall()
-
-        conn.close()
+            last_ops = connection.execute(
+                """
+                SELECT cipher_type, original_text, encrypted_text, timestamp
+                FROM cipher_operations
+                WHERE user_id = ?
+                ORDER BY timestamp DESC
+                LIMIT 5
+                """,
+                (user_id,),
+            ).fetchall()
 
         return {
             "user_id": user_row[0],
@@ -159,37 +213,38 @@ class AdminManager:
                     "cipher_type": op[0],
                     "original_text": op[1][:30] + "..." if len(op[1]) > 30 else op[1],
                     "encrypted_text": op[2][:30] + "..." if len(op[2]) > 30 else op[2],
-                    "timestamp": op[3]
+                    "timestamp": op[3],
                 }
                 for op in last_ops
-            ]
+            ],
         }
 
-    def search_operations(self, query: str) -> List[Dict]:
+    def search_operations(self, query: str) -> list[dict]:
         """Поиск операций шифрования"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT operation_id, user_id, cipher_type, original_text, encrypted_text, timestamp
-            FROM cipher_operations 
-            WHERE original_text LIKE ? OR encrypted_text LIKE ?
-            ORDER BY timestamp DESC
-            LIMIT 20
-        """, (f"%{query}%", f"%{query}%"))
+        with self.database.connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT operation_id, user_id, cipher_type, original_text, encrypted_text, timestamp
+                FROM cipher_operations
+                WHERE original_text LIKE ? OR encrypted_text LIKE ?
+                ORDER BY timestamp DESC
+                LIMIT 20
+                """,
+                (f"%{query}%", f"%{query}%"),
+            ).fetchall()
 
         results = []
-        for row in cursor.fetchall():
-            results.append({
-                "operation_id": row[0],
-                "user_id": row[1],
-                "cipher_type": row[2],
-                "original_text": row[3][:50] + "..." if len(row[3]) > 50 else row[3],
-                "encrypted_text": row[4][:50] + "..." if len(row[4]) > 50 else row[4],
-                "timestamp": row[5]
-            })
-
-        conn.close()
+        for row in rows:
+            results.append(
+                {
+                    "operation_id": row[0],
+                    "user_id": row[1],
+                    "cipher_type": row[2],
+                    "original_text": row[3][:50] + "..." if len(row[3]) > 50 else row[3],
+                    "encrypted_text": row[4][:50] + "..." if len(row[4]) > 50 else row[4],
+                    "timestamp": row[5],
+                }
+            )
         return results
 
     def export_to_csv(self, filename: str = None) -> str:
@@ -200,22 +255,31 @@ class AdminManager:
         # ИСПРАВЛЕНО: Сохранение в temp/exports/
         filepath = EXPORTS_DIR / filename
 
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        with self.database.connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT timestamp, user_id, cipher_type, original_text,
+                       encrypted_text, language, step
+                FROM cipher_operations
+                ORDER BY timestamp DESC
+                """
+            ).fetchall()
 
-        cursor.execute("""
-            SELECT timestamp, user_id, cipher_type, original_text, encrypted_text, language, step
-            FROM cipher_operations
-            ORDER BY timestamp DESC
-        """)
-
-        with open(filepath, 'w', newline='', encoding='utf-8') as f:
+        with open(filepath, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(
-                ['timestamp', 'user_id', 'cipher_type', 'original_text', 'encrypted_text', 'language', 'step'])
-            writer.writerows(cursor.fetchall())
+                [
+                    "timestamp",
+                    "user_id",
+                    "cipher_type",
+                    "original_text",
+                    "encrypted_text",
+                    "language",
+                    "step",
+                ]
+            )
+            writer.writerows(rows)
 
-        conn.close()
         return str(filepath)
 
     def export_to_json(self, filename: str = None) -> str:
@@ -226,33 +290,33 @@ class AdminManager:
         # ИСПРАВЛЕНО: Сохранение в temp/exports/
         filepath = EXPORTS_DIR / filename
 
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT operation_id, timestamp, user_id, cipher_type, 
-                   original_text, encrypted_text, language, step
-            FROM cipher_operations
-            ORDER BY timestamp DESC
-        """)
+        with self.database.connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT operation_id, timestamp, user_id, cipher_type,
+                       original_text, encrypted_text, language, step
+                FROM cipher_operations
+                ORDER BY timestamp DESC
+                """
+            ).fetchall()
 
         operations = []
-        for row in cursor.fetchall():
-            operations.append({
-                "operation_id": row[0],
-                "timestamp": row[1],
-                "user_id": row[2],
-                "cipher_type": row[3],
-                "original_text": row[4],
-                "encrypted_text": row[5],
-                "language": row[6],
-                "step": row[7]
-            })
+        for row in rows:
+            operations.append(
+                {
+                    "operation_id": row[0],
+                    "timestamp": row[1],
+                    "user_id": row[2],
+                    "cipher_type": row[3],
+                    "original_text": row[4],
+                    "encrypted_text": row[5],
+                    "language": row[6],
+                    "step": row[7],
+                }
+            )
 
-        with open(filepath, 'w', encoding='utf-8') as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(operations, f, ensure_ascii=False, indent=2)
-
-        conn.close()
         return str(filepath)
 
     def cleanup_logs(self, days: int):
@@ -260,40 +324,36 @@ class AdminManager:
         if days <= 0:
             return 0
 
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
         cutoff_date = datetime.now() - timedelta(days=days)
-        cursor.execute("""
-            DELETE FROM cipher_operations 
-            WHERE timestamp < ?
-        """, (cutoff_date.strftime('%Y-%m-%d %H:%M:%S'),))
-
-        deleted = cursor.rowcount
-        conn.commit()
-        conn.close()
+        with self.database.connection(write=True) as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM cipher_operations
+                WHERE timestamp < ?
+                """,
+                (cutoff_date.strftime("%Y-%m-%d %H:%M:%S"),),
+            )
+            deleted = cursor.rowcount
 
         return deleted
 
     def emergency_clear_all(self):
         """Экстренная полная очистка"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        with self.database.connection(write=True) as connection:
+            cursor = connection.execute("DELETE FROM cipher_operations")
+            ops_deleted = cursor.rowcount
 
-        cursor.execute("DELETE FROM cipher_operations")
-        ops_deleted = cursor.rowcount
+            # ИСПРАВЛЕНО: SQL injection через параметризованный запрос
+            if self.admins:
+                placeholders = ",".join(["?" for _ in self.admins])
+                cursor = connection.execute(
+                    f"DELETE FROM users WHERE user_id NOT IN ({placeholders})",
+                    self.admins,
+                )
+            else:
+                cursor = connection.execute("DELETE FROM users")
 
-        # ИСПРАВЛЕНО: SQL injection через параметризованный запрос
-        if ADMINS:
-            placeholders = ','.join(['?' for _ in ADMINS])
-            cursor.execute(f"DELETE FROM users WHERE user_id NOT IN ({placeholders})", ADMINS)
-        else:
-            cursor.execute("DELETE FROM users")
-
-        users_deleted = cursor.rowcount
-
-        conn.commit()
-        conn.close()
+            users_deleted = cursor.rowcount
 
         return ops_deleted, users_deleted
 

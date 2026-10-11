@@ -3,8 +3,7 @@
 
 import logging
 from datetime import datetime
-from typing import Optional, Any
-from pathlib import Path
+from typing import Any
 
 
 # ====== ЛОГИРОВАНИЕ ======
@@ -16,18 +15,10 @@ def setup_logger(name: str, level: str = "INFO") -> logging.Logger:
     :param level: Уровень логирования
     :return: Logger объект
     """
-    logger = logging.getLogger(name)
+    from core.observability import get_logger
+
+    logger = get_logger(name)
     logger.setLevel(getattr(logging, level.upper(), logging.INFO))
-
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-
     return logger
 
 
@@ -84,7 +75,7 @@ def format_file_size(size_bytes: int) -> str:
     :param size_bytes: Размер в байтах
     :return: Человекочитаемый размер
     """
-    for unit in ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ']:
+    for unit in ["Б", "КБ", "МБ", "ГБ", "ТБ"]:
         if size_bytes < 1024.0:
             return f"{size_bytes:.2f} {unit}"
         size_bytes /= 1024.0
@@ -114,7 +105,7 @@ def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
     if len(text) <= max_length:
         return text
 
-    return text[:max_length - len(suffix)] + suffix
+    return text[: max_length - len(suffix)] + suffix
 
 
 # ====== БЕЗОПАСНОСТЬ ======
@@ -128,10 +119,10 @@ def sanitize_filename(filename: str) -> str:
     import re
 
     # Удаляем опасные символы
-    safe_name = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    safe_name = re.sub(r'[<>:"/\\|?*]', "_", filename)
 
     # Удаляем control characters
-    safe_name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', safe_name)
+    safe_name = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", safe_name)
 
     # Ограничиваем длину
     safe_name = safe_name[:255]
@@ -151,15 +142,15 @@ def sanitize_input(text: str, allowed_chars: str = None) -> str:
         return ""
 
     if allowed_chars:
-        return ''.join(c for c in text if c in allowed_chars)
+        return "".join(c for c in text if c in allowed_chars)
 
     # Удаляем потенциально опасные последовательности
-    dangerous = ['<script', 'javascript:', 'data:', 'vbscript:']
+    dangerous = ["<script", "javascript:", "data:", "vbscript:"]
     text_lower = text.lower()
 
     for danger in dangerous:
         if danger in text_lower:
-            text = text.replace(danger, '')
+            text = text.replace(danger, "")
 
     return text
 
@@ -177,14 +168,14 @@ def get_date() -> str:
 
 # Экспорт всех функций
 __all__ = [
-    'setup_logger',
-    'validate_string',
-    'validate_integer',
-    'format_file_size',
-    'format_datetime',
-    'truncate_text',
-    'sanitize_filename',
-    'sanitize_input',
-    'get_timestamp',
-    'get_date'
+    "setup_logger",
+    "validate_string",
+    "validate_integer",
+    "format_file_size",
+    "format_datetime",
+    "truncate_text",
+    "sanitize_filename",
+    "sanitize_input",
+    "get_timestamp",
+    "get_date",
 ]
