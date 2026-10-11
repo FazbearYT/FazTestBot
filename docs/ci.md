@@ -13,7 +13,9 @@ The workflow runs on:
 - a weekly scheduled compatibility/security run.
 
 Concurrent runs for the same ref cancel older runs. Workflow permissions are
-read-only, and every external GitHub Action is pinned to a full commit SHA.
+read-only, every external GitHub Action is pinned to a full commit SHA, and Linux
+jobs use the explicit `ubuntu-24.04` image rather than a moving `ubuntu-latest`
+alias.
 
 ## Blocking stages
 
@@ -26,6 +28,11 @@ read-only, and every external GitHub Action is pinned to a full commit SHA.
 | `modules` | Imports and validates every module independently, then runs its owned lint, format, and test gates. |
 | `security` | Resolves and audits runtime dependencies with `pip-audit`. |
 | `CI / required` | Fails unless every preceding stage succeeds. Use this as the branch-protection check. |
+
+Direct runtime and development dependencies use exact pins. Test jobs run both
+`pip check` for dependency compatibility and `scripts.ci.verify_dependencies` to
+prove that installed direct distribution versions match both manifests. The local
+`scripts.ci.run_all` entry point performs the same checks.
 
 Coverage is uploaded from Python 3.13 for inspection. A global percentage is not yet
 used as a merge gate because the legacy modules predate automated tests. New modules

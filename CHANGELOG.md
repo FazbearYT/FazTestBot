@@ -29,6 +29,15 @@ User-visible history remains available in `history.txt`.
   storage, validation, and bounded external-client regression coverage.
 - Promoted IP Lookup out of the legacy CI exception list with handler, storage,
   metering, validation, and bounded external-client regression coverage.
+- Pinned every direct Python dependency exactly and made CI verify the installed
+  versions in addition to dependency compatibility and vulnerability auditing.
+- Pinned GitHub-hosted Linux jobs to Ubuntu 24.04 so a moving runner alias cannot
+  silently change the validation or release environment.
+
+### Release engineering
+
+- Standardized GitHub Release titles on the existing `vX.Y.Z` tag convention while
+  retaining the auditable `github-actions[bot]` publisher identity.
 
 ## [5.0.0] - 2026-10-11
 

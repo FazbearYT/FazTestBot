@@ -7,9 +7,12 @@ import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
+from scripts.ci.verify_dependencies import DependencyVerificationError, read_exact_pins
+
 MODULES_DIR = "modules"
 TESTS_DIR = "tests"
 LEGACY_ALLOWLIST = ".ci/legacy-modules-without-tests.txt"
+DEPENDENCY_MANIFESTS = ("requirements.txt", "requirements-dev.txt")
 
 FORBIDDEN_PREFIXES = (
     ".graphify/",
@@ -44,6 +47,7 @@ DIRECT_SQLITE_CONNECT = re.compile(r"\bsqlite3\s*\.\s*connect\s*\(")
 SCHEMA_DDL = re.compile(r"\bCREATE\s+TABLE\b", re.IGNORECASE)
 BARE_EXCEPT = re.compile(r"^\s*except\s*:\s*$", re.MULTILINE)
 DIRECT_PRINT = re.compile(r"\bprint\s*\(")
+MOVING_UBUNTU_RUNNER = re.compile(r"^\s*runs-on:\s*ubuntu-latest\s*$", re.MULTILINE)
 
 
 class ContractError(RuntimeError):
@@ -112,6 +116,16 @@ def validate_repository(root: Path, paths: Iterable[str] | None = None) -> list[
             errors.append(f"{module_name}: add at least one {TESTS_DIR}/{module_name}/test_*.py")
 
     normalized_paths = [path.replace("\\", "/") for path in paths]
+    for manifest_name in DEPENDENCY_MANIFESTS:
+        manifest = root / manifest_name
+        if not manifest.is_file():
+            errors.append(f"dependency manifest is missing: {manifest_name}")
+            continue
+        try:
+            read_exact_pins(manifest)
+        except (OSError, DependencyVerificationError) as error:
+            errors.append(str(error))
+
     for relative_path in normalized_paths:
         lowered = relative_path.lower()
         if (
@@ -149,6 +163,10 @@ def validate_repository(root: Path, paths: Iterable[str] | None = None) -> list[
         content = workflow.read_text(encoding="utf-8")
         if "pull_request_target:" in content:
             errors.append(f"unsafe pull_request_target trigger: {workflow.relative_to(root)}")
+        if MOVING_UBUNTU_RUNNER.search(content):
+            errors.append(
+                f"moving ubuntu-latest runner: {workflow.relative_to(root)}; pin an OS version"
+            )
         for action in ACTION_USE.findall(content):
             if action.startswith("./"):
                 continue
