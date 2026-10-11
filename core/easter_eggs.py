@@ -2,11 +2,10 @@
 # Логика пасхалок и секретных функций
 
 from datetime import datetime, timedelta
-from typing import Optional, Dict
-import os
 
 from core.exceptions import handle_exception
 from core.observability import get_logger
+from core.paths import HISTORY_FILE
 
 logger = get_logger(__name__)
 
@@ -24,9 +23,10 @@ class EasterEggManager:
     def check_blocked_user(self, user_id: int) -> bool:
         """Проверка, заблокирован ли пользователь"""
         from config import BLOCKED_USERS
+
         return user_id in BLOCKED_USERS
 
-    def process_easter_egg_message(self, user_id: int, message_text: str | None) -> Dict:
+    def process_easter_egg_message(self, user_id: int, message_text: str | None) -> dict:
         """
         Обработка сообщения на предмет пасхалки-головоломки
 
@@ -41,27 +41,23 @@ class EasterEggManager:
 
         if user_state is None:
             # Создаём новое состояние
-            user_state = {
-                'current_step': 0,
-                'last_completed': None,
-                'started_at': datetime.now()
-            }
+            user_state = {"current_step": 0, "last_completed": None, "started_at": datetime.now()}
 
         # ⚠️ ПРОВЕРКА КУЛДАУНА ПЕРЕД ОБРАБОТКОЙ ШАГОВ
-        if user_state.get('last_completed'):
-            last_time = datetime.fromisoformat(user_state['last_completed'])
+        if user_state.get("last_completed"):
+            last_time = datetime.fromisoformat(user_state["last_completed"])
             if datetime.now() - last_time < timedelta(hours=self.reset_hours):
                 # Пасхалка на cooldown — возвращаем стандартный ответ
                 # Никакой обработки шагов, прогресс не начинается
                 return {
-                    'activated': False,
-                    'step_success': False,
-                    'step': user_state['current_step'],
-                    'cooldown': True,
-                    'response': None  # None = стандартный ответ бота
+                    "activated": False,
+                    "step_success": False,
+                    "step": user_state["current_step"],
+                    "cooldown": True,
+                    "response": None,  # None = стандартный ответ бота
                 }
 
-        current_step = user_state.get('current_step', 0)
+        current_step = user_state.get("current_step", 0)
         message_text = (message_text or "").strip()
 
         # Проверяем соответствие последовательности
@@ -71,66 +67,64 @@ class EasterEggManager:
             if message_text == expected_message:
                 # Правильное сообщение на текущем шаге
                 new_step = current_step + 1
-                user_state['current_step'] = new_step
+                user_state["current_step"] = new_step
 
                 # Сохраняем состояние
                 self.db.update_user_easter_egg_state(user_id, user_state)
 
                 if new_step == len(self.puzzle_sequence):
                     # ⚠️ ГОЛОВОЛОМКА ЗАВЕРШЕНА — УСТАНАВЛИВАЕМ КУЛДАУН
-                    user_state['last_completed'] = datetime.now().isoformat()
+                    user_state["last_completed"] = datetime.now().isoformat()
                     self.db.update_user_easter_egg_state(user_id, user_state)
                     return {
-                        'activated': True,
-                        'step_success': True,
-                        'step': new_step,
-                        'cooldown': False,
-                        'response': "🎉 Поздравляем! Вы нашли секретное меню!"
+                        "activated": True,
+                        "step_success": True,
+                        "step": new_step,
+                        "cooldown": False,
+                        "response": "🎉 Поздравляем! Вы нашли секретное меню!",
                     }
                 else:
                     # Переход на следующий шаг — успешный ввод
                     return {
-                        'activated': False,
-                        'step_success': True,
-                        'step': new_step,
-                        'cooldown': False,
-                        'response': f"Успешный ввод ✅ ({new_step}/{len(self.puzzle_sequence)})"
+                        "activated": False,
+                        "step_success": True,
+                        "step": new_step,
+                        "cooldown": False,
+                        "response": f"Успешный ввод ✅ ({new_step}/{len(self.puzzle_sequence)})",
                     }
             else:
                 # Неправильное сообщение — сбрасываем ТОЛЬКО текущий прогресс шагов
                 # last_completed НЕ трогается!
-                user_state['current_step'] = 0
+                user_state["current_step"] = 0
                 self.db.update_user_easter_egg_state(user_id, user_state)
                 # Возвращаем None для стандартного ответа бота
                 return {
-                    'activated': False,
-                    'step_success': False,
-                    'step': 0,
-                    'cooldown': False,
-                    'response': None  # None = стандартный ответ бота
+                    "activated": False,
+                    "step_success": False,
+                    "step": 0,
+                    "cooldown": False,
+                    "response": None,  # None = стандартный ответ бота
                 }
 
         # Если дошли сюда — возвращаем стандартный ответ
         return {
-            'activated': False,
-            'step_success': False,
-            'step': current_step,
-            'cooldown': False,
-            'response': None
+            "activated": False,
+            "step_success": False,
+            "step": current_step,
+            "cooldown": False,
+            "response": None,
         }
 
     def get_dev_history(self) -> str:
         """Чтение истории разработки из файла"""
         try:
-            history_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'history.txt')
-            with open(history_file, 'r', encoding='utf-8') as f:
-                return f.read()
-        except Exception as e:
-            return handle_exception(e, logger, event="history.read_failed")
+            return HISTORY_FILE.read_text(encoding="utf-8")
+        except OSError as error:
+            return handle_exception(error, logger, event="history.read_failed")
 
     def get_dev_history_file_path(self) -> str:
         """Получение пути к файлу history.txt"""
-        return os.path.join(os.path.dirname(os.path.dirname(__file__)), 'history.txt')
+        return str(HISTORY_FILE)
 
 
 # Глобальный экземпляр (будет инициализирован в handlers.py)
