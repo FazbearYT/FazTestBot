@@ -4,33 +4,39 @@
 
 import html
 import random
-from datetime import datetime, timedelta
+from typing import Any
+
 from telebot import types
 from telebot.apihelper import ApiTelegramException
-from typing import Any
-from core.module_base import BaseModule
+
 from core.database import DatabaseManager
 from core.exceptions import handle_exception
+from core.module_base import BaseModule
 from core.observability import event_fields, get_logger
-from .keyboards import (
-    decision_maker_menu_keyboard,
-    number_range_keyboard,
-    dota2_hero_keyboard,
-    coin_flip_keyboard,
-    result_keyboard,
-    list_options_keyboard
-)
-from .data.heroes import ALL_HEROES, get_random_hero, get_heroes_by_attribute, get_hero_attribute, \
-    get_attribute_name_ru, HEROES_COUNT
+
 from .config import (
-    MAX_RANDOM_RANGE,
-    MAX_LIST_ITEMS,
-    MAX_DAILY_USES,
-    TABLE_NAME,
     COIN_SIDES,
-    DEFAULT_MIN,
-    DEFAULT_MAX
+    MAX_DAILY_USES,
+    MAX_LIST_ITEMS,
+    MAX_RANDOM_RANGE,
+    TABLE_NAME,
 )
+from .data.heroes import (
+    HEROES_COUNT,
+    get_attribute_name_ru,
+    get_hero_attribute,
+    get_heroes_by_attribute,
+    get_random_hero,
+)
+from .keyboards import (
+    coin_flip_keyboard,
+    decision_maker_menu_keyboard,
+    dota2_hero_keyboard,
+    list_options_keyboard,
+    number_range_keyboard,
+    result_keyboard,
+)
+
 db = DatabaseManager()
 logger = get_logger(__name__)
 
@@ -58,21 +64,21 @@ class DecisionMakerModule(BaseModule):
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
-        self.set_user_state(chat_id, 'message_id', message_id)
+        self.set_user_state(chat_id, "message_id", message_id)
 
         bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
             text="🎲 <b>Decision Maker</b>\n\n"
-                 "Инструменты для принятия решений:\n\n"
-                 "🎲 <b>Генератор чисел</b> — случайное число в диапазоне\n"
-                 "📝 <b>Выбор из списка</b> — случайный элемент из вашего списка\n"
-                 "⚔️ <b>Dota 2 герои</b> — случайный герой для игры\n"
-                 "🪙 <b>Монетка</b> — орёл или решка\n\n"
-                 f"Лимит: {MAX_DAILY_USES} использований/день\n\n"
-                 "Выберите действие:",
+            "Инструменты для принятия решений:\n\n"
+            "🎲 <b>Генератор чисел</b> — случайное число в диапазоне\n"
+            "📝 <b>Выбор из списка</b> — случайный элемент из вашего списка\n"
+            "⚔️ <b>Dota 2 герои</b> — случайный герой для игры\n"
+            "🪙 <b>Монетка</b> — орёл или решка\n\n"
+            f"Лимит: {MAX_DAILY_USES} использований/день\n\n"
+            "Выберите действие:",
             reply_markup=self.get_menu_keyboard(),
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
 
     def handle_callback(self, bot: Any, call: Any) -> None:
@@ -93,14 +99,16 @@ class DecisionMakerModule(BaseModule):
             # Назад к списку модулей
             if call.data == "dm_back_to_modules":
                 from core.module_manager import module_manager
+
                 modules = module_manager.get_all_modules()
 
                 kb = types.InlineKeyboardMarkup(row_width=1)
                 for module in modules:
-                    kb.add(types.InlineKeyboardButton(
-                        f"{module.icon} {module.name}",
-                        callback_data=f"module_{module.id}"
-                    ))
+                    kb.add(
+                        types.InlineKeyboardButton(
+                            f"{module.icon} {module.name}", callback_data=f"module_{module.id}"
+                        )
+                    )
                 kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="back_to_main"))
 
                 bot.edit_message_text(
@@ -108,7 +116,7 @@ class DecisionMakerModule(BaseModule):
                     message_id=message_id,
                     text="📦 <b>Доступные модули</b>\n\nВыберите модуль:",
                     reply_markup=kb,
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 self.cleanup_user_state(chat_id)
                 return
@@ -119,96 +127,98 @@ class DecisionMakerModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text="🎲 <b>Decision Maker</b>\n\n"
-                         "Инструменты для принятия решений:\n\n"
-                         "🎲 <b>Генератор чисел</b> — случайное число в диапазоне\n"
-                         "📝 <b>Выбор из списка</b> — случайный элемент из вашего списка\n"
-                         "⚔️ <b>Dota 2 герои</b> — случайный герой для игры\n"
-                         "🪙 <b>Монетка</b> — орёл или решка\n\n"
-                         f"Лимит: {MAX_DAILY_USES} использований/день\n\n"
-                         "Выберите действие:",
+                    "Инструменты для принятия решений:\n\n"
+                    "🎲 <b>Генератор чисел</b> — случайное число в диапазоне\n"
+                    "📝 <b>Выбор из списка</b> — случайный элемент из вашего списка\n"
+                    "⚔️ <b>Dota 2 герои</b> — случайный герой для игры\n"
+                    "🪙 <b>Монетка</b> — орёл или решка\n\n"
+                    f"Лимит: {MAX_DAILY_USES} использований/день\n\n"
+                    "Выберите действие:",
                     reply_markup=decision_maker_menu_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 return
 
             # Генератор чисел
             if call.data == "dm_numbers":
-                self.set_user_state(chat_id, 'action', 'numbers')
+                self.set_user_state(chat_id, "action", "numbers")
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text="🎲 <b>Генератор случайных чисел</b>\n\n"
-                         "Выберите диапазон или введите свой:\n\n"
-                         "<i>Пример: 1-100</i>",
+                    "Выберите диапазон или введите свой:\n\n"
+                    "<i>Пример: 1-100</i>",
                     reply_markup=number_range_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 return
 
             # Выбор из списка
             if call.data == "dm_list":
-                self.set_user_state(chat_id, 'action', 'list')
+                self.set_user_state(chat_id, "action", "list")
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text="📝 <b>Выбор из списка</b>\n\n"
-                         "Для начала работы нажмите кнопку «📝 Ввести список»:\n\n"
-                         "Отправьте список вариантов через запятую:\n\n"
-                         "<i>Пример: пицца, суши, бургер, салат</i>",
+                    "Для начала работы нажмите кнопку «📝 Ввести список»:\n\n"
+                    "Отправьте список вариантов через запятую:\n\n"
+                    "<i>Пример: пицца, суши, бургер, салат</i>",
                     reply_markup=list_options_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 return
 
             # Dota 2 герои
             if call.data == "dm_dota2":
-                self.set_user_state(chat_id, 'action', 'dota2')
+                self.set_user_state(chat_id, "action", "dota2")
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text="⚔️ <b>Dota 2 Герои</b>\n\n"
-                         f"Всего героев: {HEROES_COUNT}\n\n"
-                         "Выберите способ выбора:",
+                    f"Всего героев: {HEROES_COUNT}\n\n"
+                    "Выберите способ выбора:",
                     reply_markup=dota2_hero_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 return
 
             # Монетка
             if call.data == "dm_coin":
-                self.set_user_state(chat_id, 'action', 'coin')
+                self.set_user_state(chat_id, "action", "coin")
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text="🪙 <b>Подбрасывание монетки</b>\n\n"
-                         "Орёл или Решка?\n\n"
-                         "Проверь свою удачу!",
+                    "Орёл или Решка?\n\n"
+                    "Проверь свою удачу!",
                     reply_markup=coin_flip_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 return
 
             # ====== ГЕНЕРАТОР ЧИСЕЛ ======
             if call.data.startswith("dm_range_"):
                 if call.data == "dm_range_custom":
-                    self.set_user_state(chat_id, 'range_type', 'custom')
+                    self.set_user_state(chat_id, "range_type", "custom")
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
                         text="🎲 <b>Свой диапазон</b>\n\n"
-                             f"Введите диапазон (макс. {MAX_RANDOM_RANGE}):\n\n"
-                             "<i>Пример: 50-150</i>",
+                        f"Введите диапазон (макс. {MAX_RANDOM_RANGE}):\n\n"
+                        "<i>Пример: 50-150</i>",
                         reply_markup=None,
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
-                    bot.register_next_step_handler_by_chat_id(chat_id, self._process_custom_range, bot)
+                    bot.register_next_step_handler_by_chat_id(
+                        chat_id, self._process_custom_range, bot
+                    )
                     return
 
                 # Предопределённые диапазоны
                 range_map = {
                     "dm_range_1_10": (1, 10),
                     "dm_range_1_100": (1, 100),
-                    "dm_range_1_1000": (1, 1000)
+                    "dm_range_1_1000": (1, 1000),
                 }
 
                 if call.data in range_map:
@@ -216,20 +226,20 @@ class DecisionMakerModule(BaseModule):
                     result = random.randint(min_val, max_val)
 
                     # Сохраняем для повтора
-                    self.set_user_state(chat_id, 'last_action', 'numbers')
-                    self.set_user_state(chat_id, 'last_min', min_val)
-                    self.set_user_state(chat_id, 'last_max', max_val)
+                    self.set_user_state(chat_id, "last_action", "numbers")
+                    self.set_user_state(chat_id, "last_min", min_val)
+                    self.set_user_state(chat_id, "last_max", max_val)
 
-                    self._log_action(chat_id, 'random_number', str(result), f"{min_val}-{max_val}")
+                    self._log_action(chat_id, "random_number", str(result), f"{min_val}-{max_val}")
 
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
                         text=f"🎲 <b>Случайное число</b>\n\n"
-                             f"Диапазон: {min_val}-{max_val}\n"
-                             f"Результат: <b>{result}</b>",
+                        f"Диапазон: {min_val}-{max_val}\n"
+                        f"Результат: <b>{result}</b>",
                         reply_markup=result_keyboard("dm_numbers"),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                     return
 
@@ -240,19 +250,19 @@ class DecisionMakerModule(BaseModule):
                     attribute = get_hero_attribute(hero)
                     attribute_name = get_attribute_name_ru(attribute)
 
-                    self.set_user_state(chat_id, 'last_action', 'dota2')
-                    self.set_user_state(chat_id, 'last_attribute', None)  # Случайный выбор
-                    self._log_action(chat_id, 'dota2_hero', hero, attribute)
+                    self.set_user_state(chat_id, "last_action", "dota2")
+                    self.set_user_state(chat_id, "last_attribute", None)  # Случайный выбор
+                    self._log_action(chat_id, "dota2_hero", hero, attribute)
 
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
                         text=f"⚔️ <b>Случайный герой</b>\n\n"
-                             f"🦸 <b>{hero}</b>\n"
-                             f"Атрибут: {attribute_name}\n\n"
-                             f"Всего героев: {HEROES_COUNT}",
+                        f"🦸 <b>{hero}</b>\n"
+                        f"Атрибут: {attribute_name}\n\n"
+                        f"Всего героев: {HEROES_COUNT}",
                         reply_markup=result_keyboard("dm_dota2"),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                     return
 
@@ -261,7 +271,7 @@ class DecisionMakerModule(BaseModule):
                     "dm_dota2_strength": ("strength", "💪 Сила"),
                     "dm_dota2_agility": ("agility", "🗡️ Ловкость"),
                     "dm_dota2_intel": ("intelligence", "🧠 Интеллект"),
-                    "dm_dota2_universal": ("universal", "⚡ Универсал")
+                    "dm_dota2_universal": ("universal", "⚡ Универсал"),
                 }
 
                 if call.data in attribute_map:
@@ -269,20 +279,20 @@ class DecisionMakerModule(BaseModule):
                     heroes = get_heroes_by_attribute(attr_key)
                     hero = random.choice(heroes)
 
-                    self.set_user_state(chat_id, 'last_action', 'dota2')
-                    self.set_user_state(chat_id, 'last_attribute', attr_key)  # Сохраняем атрибут!
-                    self._log_action(chat_id, 'dota2_hero', hero, attr_key)
+                    self.set_user_state(chat_id, "last_action", "dota2")
+                    self.set_user_state(chat_id, "last_attribute", attr_key)  # Сохраняем атрибут!
+                    self._log_action(chat_id, "dota2_hero", hero, attr_key)
 
                     # ИСПРАВЛЕНО: Правильный подсчет количества героев в категории
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
                         text=f"⚔️ <b>Случайный герой</b>\n\n"
-                             f"🦸 <b>{hero}</b>\n"
-                             f"Атрибут: {attr_name}\n"
-                             f"Всего в категории: {len(heroes)}",  # Правильный подсчет!
+                        f"🦸 <b>{hero}</b>\n"
+                        f"Атрибут: {attr_name}\n"
+                        f"Всего в категории: {len(heroes)}",  # Правильный подсчет!
                         reply_markup=result_keyboard("dm_dota2"),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                     return
 
@@ -291,17 +301,16 @@ class DecisionMakerModule(BaseModule):
                 result = random.choice(COIN_SIDES)
                 emoji = "🦅" if result == "Орёл" else "🪙"
 
-                self.set_user_state(chat_id, 'last_action', 'coin')
-                self._log_action(chat_id, 'coin_flip', result, "")
+                self.set_user_state(chat_id, "last_action", "coin")
+                self._log_action(chat_id, "coin_flip", result, "")
                 self._update_coin_stats(chat_id, result)
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"🪙 <b>Результат подбрасывания</b>\n\n"
-                         f"{emoji} <b>{result}</b>!",
+                    text=f"🪙 <b>Результат подбрасывания</b>\n\n{emoji} <b>{result}</b>!",
                     reply_markup=result_keyboard("dm_coin"),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 return
 
@@ -309,7 +318,7 @@ class DecisionMakerModule(BaseModule):
                 stats = self._get_coin_stats(chat_id)
 
                 if stats:
-                    text = f"📊 <b>Статистика монетки</b>\n\n"
+                    text = "📊 <b>Статистика монетки</b>\n\n"
                     text += f"Всего подбрасываний: {stats['total']}\n"
                     text += f"🦅 Орёл: {stats['heads']} ({stats['heads_percent']}%)\n"
                     text += f"🪙 Решка: {stats['tails']} ({stats['tails_percent']}%)"
@@ -323,14 +332,14 @@ class DecisionMakerModule(BaseModule):
                     message_id=message_id,
                     text=text,
                     reply_markup=coin_flip_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 return
 
             # ====== ВВОД СПИСКА ======
             if call.data == "dm_list_input":
-                self.set_user_state(chat_id, 'action', 'list')
-                self.set_user_state(chat_id, 'list_state', 'waiting_input')
+                self.set_user_state(chat_id, "action", "list")
+                self.set_user_state(chat_id, "list_state", "waiting_input")
 
                 # Создаем клавиатуру с кнопкой "Назад"
                 cancel_kb = types.InlineKeyboardMarkup(row_width=1)
@@ -342,36 +351,36 @@ class DecisionMakerModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text="📝 <b>Ввод списка</b>\n\n"
-                         "Отправьте варианты через запятую:\n\n"
-                         "<i>Пример: пицца, суши, бургер, салат</i>\n\n"
-                         "Или нажмите «🔙 Отмена»",
+                    "Отправьте варианты через запятую:\n\n"
+                    "<i>Пример: пицца, суши, бургер, салат</i>\n\n"
+                    "Или нажмите «🔙 Отмена»",
                     reply_markup=cancel_kb,  # ИСПРАВЛЕНО: добавлена клавиатура!
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 bot.register_next_step_handler_by_chat_id(chat_id, self._process_list_input, bot)
                 return
 
             # ====== ПОВТОР ======
             if call.data == "dm_again":
-                action = self.get_user_state(chat_id, 'last_action')
+                action = self.get_user_state(chat_id, "last_action")
 
-                if action == 'numbers':
-                    min_val = self.get_user_state(chat_id, 'last_min', 1)
-                    max_val = self.get_user_state(chat_id, 'last_max', 100)
+                if action == "numbers":
+                    min_val = self.get_user_state(chat_id, "last_min", 1)
+                    max_val = self.get_user_state(chat_id, "last_max", 100)
                     result = random.randint(min_val, max_val)
 
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
                         text=f"🎲 <b>Случайное число</b>\n\n"
-                             f"Диапазон: {min_val}-{max_val}\n"
-                             f"Результат: <b>{result}</b>",
+                        f"Диапазон: {min_val}-{max_val}\n"
+                        f"Результат: <b>{result}</b>",
                         reply_markup=result_keyboard("dm_numbers"),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
-                elif action == 'dota2':
+                elif action == "dota2":
                     # Проверяем, был ли выбран атрибут
-                    last_attribute = self.get_user_state(chat_id, 'last_attribute')
+                    last_attribute = self.get_user_state(chat_id, "last_attribute")
 
                     if last_attribute:
                         # Повторяем выбор по тому же атрибуту
@@ -383,11 +392,11 @@ class DecisionMakerModule(BaseModule):
                             chat_id=chat_id,
                             message_id=message_id,
                             text=f"⚔️ <b>Случайный герой</b>\n\n"
-                                 f"🦸 <b>{hero}</b>\n"
-                                 f"Атрибут: {attribute_name}\n"
-                                 f"Всего в категории: {len(heroes)}",
+                            f"🦸 <b>{hero}</b>\n"
+                            f"Атрибут: {attribute_name}\n"
+                            f"Всего в категории: {len(heroes)}",
                             reply_markup=result_keyboard("dm_dota2"),
-                            parse_mode="HTML"
+                            parse_mode="HTML",
                         )
                     else:
                         # Случайный герой из всех
@@ -399,12 +408,12 @@ class DecisionMakerModule(BaseModule):
                             chat_id=chat_id,
                             message_id=message_id,
                             text=f"⚔️ <b>Случайный герой</b>\n\n"
-                                 f"🦸 <b>{hero}</b>\n"
-                                 f"Атрибут: {attribute_name}",
+                            f"🦸 <b>{hero}</b>\n"
+                            f"Атрибут: {attribute_name}",
                             reply_markup=result_keyboard("dm_dota2"),
-                            parse_mode="HTML"
+                            parse_mode="HTML",
                         )
-                elif action == 'coin':
+                elif action == "coin":
                     result = random.choice(COIN_SIDES)
                     emoji = "🦅" if result == "Орёл" else "🪙"
 
@@ -413,13 +422,12 @@ class DecisionMakerModule(BaseModule):
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=f"🪙 <b>Результат подбрасывания</b>\n\n"
-                             f"{emoji} <b>{result}</b>!",
+                        text=f"🪙 <b>Результат подбрасывания</b>\n\n{emoji} <b>{result}</b>!",
                         reply_markup=result_keyboard("dm_coin"),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
-                elif action == 'list':
-                    items = self.get_user_state(chat_id, 'last_list', [])
+                elif action == "list":
+                    items = self.get_user_state(chat_id, "last_list", [])
                     if items:
                         result = random.choice(items)
 
@@ -433,11 +441,11 @@ class DecisionMakerModule(BaseModule):
                             chat_id=chat_id,
                             message_id=message_id,
                             text=f"📝 <b>Выбор из списка</b>\n\n"
-                                 f"Варианты ({len(items)}): {items_text}\n\n"
-                                 f"🎲 <b>Результат:</b>\n"
-                                 f"<b>{safe_result}</b>",
+                            f"Варианты ({len(items)}): {items_text}\n\n"
+                            f"🎲 <b>Результат:</b>\n"
+                            f"<b>{safe_result}</b>",
                             reply_markup=result_keyboard("dm_list"),
-                            parse_mode="HTML"
+                            parse_mode="HTML",
                         )
                     else:
                         bot.edit_message_text(
@@ -445,13 +453,11 @@ class DecisionMakerModule(BaseModule):
                             message_id=message_id,
                             text="⚠️ Список пуст. Введите новый список.",
                             reply_markup=list_options_keyboard(),
-                            parse_mode="HTML"
+                            parse_mode="HTML",
                         )
                 else:
                     bot.answer_callback_query(
-                        call.id,
-                        "⚠️ Нет предыдущего действия",
-                        show_alert=True
+                        call.id, "⚠️ Нет предыдущего действия", show_alert=True
                     )
                 return
 
@@ -462,11 +468,7 @@ class DecisionMakerModule(BaseModule):
                 event="decision.callback_failed",
                 context={"chat_id": chat_id},
             )
-            bot.answer_callback_query(
-                call.id,
-                "Сервис временно недоступен.",
-                show_alert=True
-            )
+            bot.answer_callback_query(call.id, "Сервис временно недоступен.", show_alert=True)
 
     def get_menu_keyboard(self) -> types.InlineKeyboardMarkup:
         """Клавиатура меню"""
@@ -479,25 +481,25 @@ class DecisionMakerModule(BaseModule):
 
         try:
             # Получаем message_id ДО удаления сообщения
-            message_id = self.get_user_state(chat_id, 'message_id')
+            message_id = self.get_user_state(chat_id, "message_id")
 
             # Проверяем состояние
-            list_state = self.get_user_state(chat_id, 'list_state')
-            if list_state != 'waiting_input':
+            list_state = self.get_user_state(chat_id, "list_state")
+            if list_state != "waiting_input":
                 if message_id:
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
                         text="⚠️ Сессия устарела. Вернитесь в меню и нажмите «📝 Ввести список»",
                         reply_markup=decision_maker_menu_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 else:
                     bot.send_message(
                         chat_id,
                         "⚠️ Сессия устарела. Вернитесь в меню и нажмите «📝 Ввести список»",
                         reply_markup=decision_maker_menu_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 return
 
@@ -512,7 +514,7 @@ class DecisionMakerModule(BaseModule):
                 )
 
             # Парсим список
-            items = [item.strip() for item in text.split(',') if item.strip()]
+            items = [item.strip() for item in text.split(",") if item.strip()]
 
             if not items:
                 if message_id:
@@ -520,9 +522,9 @@ class DecisionMakerModule(BaseModule):
                         chat_id=chat_id,
                         message_id=message_id,
                         text="❌ Список пуст. Отправьте варианты через запятую.\n\n"
-                             "<i>Пример: пицца, суши, бургер</i>",
+                        "<i>Пример: пицца, суши, бургер</i>",
                         reply_markup=list_options_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 else:
                     bot.send_message(
@@ -530,7 +532,7 @@ class DecisionMakerModule(BaseModule):
                         "❌ Список пуст. Отправьте варианты через запятую.\n\n"
                         "<i>Пример: пицца, суши, бургер</i>",
                         reply_markup=list_options_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 return
 
@@ -540,9 +542,9 @@ class DecisionMakerModule(BaseModule):
                         chat_id=chat_id,
                         message_id=message_id,
                         text=f"❌ Слишком много элементов (макс. {MAX_LIST_ITEMS}).\n\n"
-                             f"Вы отправили: {len(items)}",
+                        f"Вы отправили: {len(items)}",
                         reply_markup=list_options_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 else:
                     bot.send_message(
@@ -550,7 +552,7 @@ class DecisionMakerModule(BaseModule):
                         f"❌ Слишком много элементов (макс. {MAX_LIST_ITEMS}).\n\n"
                         f"Вы отправили: {len(items)}",
                         reply_markup=list_options_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 return
 
@@ -560,17 +562,16 @@ class DecisionMakerModule(BaseModule):
                         chat_id=chat_id,
                         message_id=message_id,
                         text="❌ Нужно минимум 2 варианта для выбора.\n\n"
-                             f"Вы отправили: {len(items)}",
+                        f"Вы отправили: {len(items)}",
                         reply_markup=list_options_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 else:
                     bot.send_message(
                         chat_id,
-                        "❌ Нужно минимум 2 варианта для выбора.\n\n"
-                        f"Вы отправили: {len(items)}",
+                        f"❌ Нужно минимум 2 варианта для выбора.\n\nВы отправили: {len(items)}",
                         reply_markup=list_options_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 return
 
@@ -578,10 +579,10 @@ class DecisionMakerModule(BaseModule):
             result = random.choice(items)
 
             # Сохраняем для повтора
-            self.set_user_state(chat_id, 'last_action', 'list')
-            self.set_user_state(chat_id, 'last_list', items)
+            self.set_user_state(chat_id, "last_action", "list")
+            self.set_user_state(chat_id, "last_list", items)
 
-            self._log_action(chat_id, 'list_choice', result, f"{len(items)} items")
+            self._log_action(chat_id, "list_choice", result, f"{len(items)} items")
 
             # Формируем сообщение
             items_text = ", ".join(html.escape(item) for item in items[:10])
@@ -594,11 +595,11 @@ class DecisionMakerModule(BaseModule):
                     chat_id=chat_id,
                     message_id=message_id,
                     text=f"📝 <b>Выбор из списка</b>\n\n"
-                         f"Варианты ({len(items)}): {items_text}\n\n"
-                         f"🎲 <b>Результат:</b>\n"
-                         f"<b>{safe_result}</b>",
+                    f"Варианты ({len(items)}): {items_text}\n\n"
+                    f"🎲 <b>Результат:</b>\n"
+                    f"<b>{safe_result}</b>",
                     reply_markup=result_keyboard("dm_list"),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
             else:
                 bot.send_message(
@@ -608,7 +609,7 @@ class DecisionMakerModule(BaseModule):
                     f"🎲 <b>Результат:</b>\n"
                     f"<b>{safe_result}</b>",
                     reply_markup=result_keyboard("dm_list"),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
 
         except Exception as exc:
@@ -619,7 +620,7 @@ class DecisionMakerModule(BaseModule):
                 context={"chat_id": chat_id},
             )
             # Получаем message_id для редактирования
-            message_id = self.get_user_state(chat_id, 'message_id')
+            message_id = self.get_user_state(chat_id, "message_id")
 
             if message_id:
                 bot.edit_message_text(
@@ -627,14 +628,14 @@ class DecisionMakerModule(BaseModule):
                     message_id=message_id,
                     text="❌ Сервис временно недоступен.",
                     reply_markup=list_options_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
             else:
                 bot.send_message(
                     chat_id,
                     "❌ Сервис временно недоступен.",
                     reply_markup=list_options_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
 
     def _process_custom_range(self, message, bot):
@@ -643,7 +644,7 @@ class DecisionMakerModule(BaseModule):
 
         try:
             # Получаем message_id ДО удаления
-            message_id = self.get_user_state(chat_id, 'message_id')
+            message_id = self.get_user_state(chat_id, "message_id")
 
             # Удаляем сообщение пользователя
             try:
@@ -657,25 +658,25 @@ class DecisionMakerModule(BaseModule):
 
             # Парсим диапазон
             text = message.text.strip()
-            if '-' not in text:
+            if "-" not in text:
                 if message_id:
                     bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
                         text="❌ Неверный формат. Используйте формат: min-max\n\nПример: 50-150",
                         reply_markup=number_range_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 else:
                     bot.send_message(
                         chat_id,
                         "❌ Неверный формат. Используйте формат: min-max\n\nПример: 50-150",
                         reply_markup=number_range_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 return
 
-            parts = text.split('-')
+            parts = text.split("-")
             min_val = int(parts[0].strip())
             max_val = int(parts[1].strip())
 
@@ -687,14 +688,14 @@ class DecisionMakerModule(BaseModule):
                         message_id=message_id,
                         text="❌ Минимальное значение должно быть меньше максимального",
                         reply_markup=number_range_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 else:
                     bot.send_message(
                         chat_id,
                         "❌ Минимальное значение должно быть меньше максимального",
                         reply_markup=number_range_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 return
 
@@ -705,14 +706,14 @@ class DecisionMakerModule(BaseModule):
                         message_id=message_id,
                         text=f"❌ Диапазон слишком большой (макс. {MAX_RANDOM_RANGE})",
                         reply_markup=number_range_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 else:
                     bot.send_message(
                         chat_id,
                         f"❌ Диапазон слишком большой (макс. {MAX_RANDOM_RANGE})",
                         reply_markup=number_range_keyboard(),
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 return
 
@@ -720,21 +721,21 @@ class DecisionMakerModule(BaseModule):
             result = random.randint(min_val, max_val)
 
             # Сохраняем для повтора
-            self.set_user_state(chat_id, 'last_action', 'numbers')
-            self.set_user_state(chat_id, 'last_min', min_val)
-            self.set_user_state(chat_id, 'last_max', max_val)
+            self.set_user_state(chat_id, "last_action", "numbers")
+            self.set_user_state(chat_id, "last_min", min_val)
+            self.set_user_state(chat_id, "last_max", max_val)
 
-            self._log_action(chat_id, 'random_number', str(result), f"{min_val}-{max_val}")
+            self._log_action(chat_id, "random_number", str(result), f"{min_val}-{max_val}")
 
             if message_id:
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text=f"🎲 <b>Случайное число</b>\n\n"
-                         f"Диапазон: {min_val}-{max_val}\n"
-                         f"Результат: <b>{result}</b>",
+                    f"Диапазон: {min_val}-{max_val}\n"
+                    f"Результат: <b>{result}</b>",
                     reply_markup=result_keyboard("dm_numbers"),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
             else:
                 bot.send_message(
@@ -743,25 +744,25 @@ class DecisionMakerModule(BaseModule):
                     f"Диапазон: {min_val}-{max_val}\n"
                     f"Результат: <b>{result}</b>",
                     reply_markup=result_keyboard("dm_numbers"),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
 
         except ValueError:
-            message_id = self.get_user_state(chat_id, 'message_id')
+            message_id = self.get_user_state(chat_id, "message_id")
             if message_id:
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text="❌ Введите корректные числа в формате: min-max",
                     reply_markup=number_range_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
             else:
                 bot.send_message(
                     chat_id,
                     "❌ Введите корректные числа в формате: min-max",
                     reply_markup=number_range_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
         except Exception as exc:
             handle_exception(
@@ -770,21 +771,21 @@ class DecisionMakerModule(BaseModule):
                 event="decision.range_input_failed",
                 context={"chat_id": chat_id},
             )
-            message_id = self.get_user_state(chat_id, 'message_id')
+            message_id = self.get_user_state(chat_id, "message_id")
             if message_id:
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text="❌ Сервис временно недоступен.",
                     reply_markup=number_range_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
             else:
                 bot.send_message(
                     chat_id,
                     "❌ Сервис временно недоступен.",
                     reply_markup=number_range_keyboard(),
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
 
     def _log_action(self, user_id: int, action_type: str, result: str, details: str):
@@ -853,11 +854,11 @@ class DecisionMakerModule(BaseModule):
                 tails_percent = round((tails / total * 100), 1) if total > 0 else 0
 
                 return {
-                    'heads': heads,
-                    'tails': tails,
-                    'total': total,
-                    'heads_percent': heads_percent,
-                    'tails_percent': tails_percent
+                    "heads": heads,
+                    "tails": tails,
+                    "total": total,
+                    "heads_percent": heads_percent,
+                    "tails_percent": tails_percent,
                 }
             return None
         except Exception as exc:

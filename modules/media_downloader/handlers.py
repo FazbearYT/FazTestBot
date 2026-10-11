@@ -1,12 +1,15 @@
 # modules/media_downloader/handlers.py
 # Обработчики модуля "Media Downloader"
 
-from telebot import types
 from typing import Any
-from core.module_base import BaseModule
+
+from telebot import types
+
 from core.database import DatabaseManager
 from core.exceptions import handle_exception
+from core.module_base import BaseModule
 from core.observability import event_fields, get_logger
+
 from .keyboards import (
     media_downloader_menu_keyboard,
 )
@@ -24,28 +27,26 @@ class MediaDownloaderModule(BaseModule):
         chat_id = call.message.chat.id
         message_id = call.message.message_id
 
-        self.set_interaction_state(actor_id, chat_id, 'message_id', message_id)
+        self.set_interaction_state(actor_id, chat_id, "message_id", message_id)
 
         # Создаём клавиатуру с кнопкой возврата
         kb = types.InlineKeyboardMarkup(row_width=1)
-        kb.add(
-            types.InlineKeyboardButton("🔙 К списку модулей", callback_data="back_to_modules")
-        )
+        kb.add(types.InlineKeyboardButton("🔙 К списку модулей", callback_data="back_to_modules"))
 
         bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
             text="🚧 <b>Media Downloader</b>\n\n"
-                 "⚠️ <b>Модуль временно отключён</b>\n\n"
-                 "К сожалению, модуль загрузки видео находится в разработке.\n"
-                 "Мы столкнулись с техническими сложностями:\n\n"
-                 "• Проблемы с pytubefix (Maximum retries exceeded)\n"
-                 "• Ошибки скачивания adaptive streams\n"
-                 "• Нестабильная работа YouTube API\n\n"
-                 "Модуль отправлен в долгий ящик до появления стабильных решений.\n\n"
-                 "<i>Возвращайтесь позже!</i>",
+            "⚠️ <b>Модуль временно отключён</b>\n\n"
+            "К сожалению, модуль загрузки видео находится в разработке.\n"
+            "Мы столкнулись с техническими сложностями:\n\n"
+            "• Проблемы с pytubefix (Maximum retries exceeded)\n"
+            "• Ошибки скачивания adaptive streams\n"
+            "• Нестабильная работа YouTube API\n\n"
+            "Модуль отправлен в долгий ящик до появления стабильных решений.\n\n"
+            "<i>Возвращайтесь позже!</i>",
             reply_markup=kb,
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
 
     def handle_callback(self, bot: Any, call: Any) -> None:
@@ -60,14 +61,16 @@ class MediaDownloaderModule(BaseModule):
             # Назад к списку модулей
             if call.data == "media_back_to_modules":
                 from core.module_manager import module_manager
+
                 modules = module_manager.get_all_modules()
 
                 kb = types.InlineKeyboardMarkup(row_width=1)
                 for module in modules:
-                    kb.add(types.InlineKeyboardButton(
-                        f"{module.icon} {module.name}",
-                        callback_data=f"module_{module.id}"
-                    ))
+                    kb.add(
+                        types.InlineKeyboardButton(
+                            f"{module.icon} {module.name}", callback_data=f"module_{module.id}"
+                        )
+                    )
                 kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="back_to_main"))
 
                 bot.edit_message_text(
@@ -75,7 +78,7 @@ class MediaDownloaderModule(BaseModule):
                     message_id=message_id,
                     text="📦 <b>Доступные модули</b>\n\nВыберите модуль:",
                     reply_markup=kb,
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 self.cleanup_interaction_state(actor_id, chat_id)
                 return
@@ -85,30 +88,31 @@ class MediaDownloaderModule(BaseModule):
                 # Создаём клавиатуру с кнопкой возврата
                 kb = types.InlineKeyboardMarkup(row_width=1)
                 kb.add(
-                    types.InlineKeyboardButton("🔙 К списку модулей", callback_data="back_to_modules")
+                    types.InlineKeyboardButton(
+                        "🔙 К списку модулей", callback_data="back_to_modules"
+                    )
                 )
 
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text="🚧 <b>Media Downloader</b>\n\n"
-                         "⚠️ <b>Модуль временно отключён</b>\n\n"
-                         "К сожалению, модуль находится в разработке.\n"
-                         "Мы столкнулись с техническими сложностями.\n\n"
-                         "<i>Возвращайтесь позже!</i>",
+                    "⚠️ <b>Модуль временно отключён</b>\n\n"
+                    "К сожалению, модуль находится в разработке.\n"
+                    "Мы столкнулись с техническими сложностями.\n\n"
+                    "<i>Возвращайтесь позже!</i>",
                     reply_markup=kb,
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 return
 
             # Все остальные кнопки - заглушка
-            if call.data in ["media_video", "media_audio", "media_my_downloads"] or call.data.startswith(
-                    "media_quality_") or call.data == "media_again":
-                bot.answer_callback_query(
-                    call.id,
-                    "⚠️ Модуль временно отключён",
-                    show_alert=True
-                )
+            if (
+                call.data in ["media_video", "media_audio", "media_my_downloads"]
+                or call.data.startswith("media_quality_")
+                or call.data == "media_again"
+            ):
+                bot.answer_callback_query(call.id, "⚠️ Модуль временно отключён", show_alert=True)
                 return
 
         except Exception as exc:
@@ -130,9 +134,7 @@ class MediaDownloaderModule(BaseModule):
 
         # Создаём клавиатуру с кнопкой возврата
         kb = types.InlineKeyboardMarkup(row_width=1)
-        kb.add(
-            types.InlineKeyboardButton("🔙 К списку модулей", callback_data="back_to_modules")
-        )
+        kb.add(types.InlineKeyboardButton("🔙 К списку модулей", callback_data="back_to_modules"))
 
         bot.send_message(
             chat_id,
@@ -141,15 +143,24 @@ class MediaDownloaderModule(BaseModule):
             "Мы столкнулись с техническими сложностями.\n\n"
             "<i>Возвращайтесь позже!</i>",
             reply_markup=kb,
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
 
     def _check_download_limit(self, user_id: int) -> bool:
         """Проверка лимита"""
         return False  # Всегда false - модуль отключён
 
-    def _log_download(self, user_id: int, url: str, media_type: str, platform: str,
-                      title: str, file_path: str, file_size: int, quality: str):
+    def _log_download(
+        self,
+        user_id: int,
+        url: str,
+        media_type: str,
+        platform: str,
+        title: str,
+        file_path: str,
+        file_size: int,
+        quality: str,
+    ):
         """Логирование"""
         pass  # Не логируем - модуль отключён
 
