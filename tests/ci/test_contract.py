@@ -21,6 +21,8 @@ class RepositoryContractTests(unittest.TestCase):
         (self.root / ".github" / "workflows" / "ci.yml").write_text(
             f"steps:\n  - uses: {PINNED_ACTION}\n", encoding="utf-8"
         )
+        (self.root / "requirements.txt").write_text("runtime==1.0.0\n", encoding="utf-8")
+        (self.root / "requirements-dev.txt").write_text("quality==2.0.0\n", encoding="utf-8")
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -74,6 +76,16 @@ class RepositoryContractTests(unittest.TestCase):
         errors = validate_repository(self.root, [".github/workflows/ci.yml"])
 
         self.assertTrue(any("full commit SHA" in error for error in errors))
+
+    def test_dependencies_and_linux_runner_must_be_reproducible(self):
+        (self.root / "requirements.txt").write_text("runtime>=1.0.0\n", encoding="utf-8")
+        workflow = self.root / ".github" / "workflows" / "ci.yml"
+        workflow.write_text("jobs:\n  tests:\n    runs-on: ubuntu-latest\n", encoding="utf-8")
+
+        errors = validate_repository(self.root, [])
+
+        self.assertTrue(any("exact == pin" in error for error in errors))
+        self.assertTrue(any("moving ubuntu-latest runner" in error for error in errors))
 
     def test_long_plaintext_separator_is_not_a_merge_marker(self):
         (self.root / "history.txt").write_text("===========================\n", encoding="utf-8")

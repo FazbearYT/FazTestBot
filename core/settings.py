@@ -98,6 +98,10 @@ class Settings:
             errors.append("CUTTLY_API_KEY is required when URL_SHORTENER_SERVICE=cuttly")
         if self.ip_info_api_service == "ipinfo" and not self.ipinfo_api_key:
             errors.append("IPINFO_API_KEY is required when IP_INFO_API_SERVICE=ipinfo")
+        if self.media_downloader_enabled:
+            errors.append(
+                "MEDIA_DOWNLOADER_ENABLED=true is unsupported while the module is disabled"
+            )
         return tuple(errors)
 
     def require_startup_ready(self) -> None:

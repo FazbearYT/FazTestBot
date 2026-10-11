@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from core.version import RELEASE_DATE, VERSION
 from scripts.release import (
     ReleaseError,
     build_release,
@@ -24,7 +25,7 @@ class ReleaseMetadataTests(unittest.TestCase):
     def test_changelog_section_stops_before_next_release(self):
         text = "# Changelog\n\n## [5.0.0] - 2026-10-11\n\nNotes.\n\n## [4.5.0] - 2025-01-01\nOld.\n"
         self.assertEqual(
-            changelog_section(text),
+            changelog_section(text, version="5.0.0", date="2026-10-11"),
             "## [5.0.0] - 2026-10-11\n\nNotes.\n",
         )
 
@@ -37,7 +38,7 @@ class ReleaseMetadataTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "CHANGELOG.md").write_text(
-                "## [5.0.0] - 2026-10-11\n\nNotes.\n", encoding="utf-8"
+                f"## [{VERSION}] - {RELEASE_DATE}\n\nNotes.\n", encoding="utf-8"
             )
             (root / "history.txt").write_text("v4.5.0\n", encoding="utf-8")
             with self.assertRaisesRegex(ReleaseError, "history.txt"):
@@ -49,9 +50,9 @@ class ReleaseBuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "CHANGELOG.md").write_text(
-                "## [5.0.0] - 2026-10-11\n\nRelease notes.\n", encoding="utf-8"
+                f"## [{VERSION}] - {RELEASE_DATE}\n\nRelease notes.\n", encoding="utf-8"
             )
-            (root / "history.txt").write_text("v5.0.0 — release\n", encoding="utf-8")
+            (root / "history.txt").write_text(f"v{VERSION} — release\n", encoding="utf-8")
             (root / "tracked.txt").write_text("source\n", encoding="utf-8")
             subprocess.run(["git", "init", "-q"], cwd=root, check=True)
             subprocess.run(["git", "add", "."], cwd=root, check=True)
@@ -76,16 +77,16 @@ class ReleaseBuildTests(unittest.TestCase):
             self.assertEqual(checksum.read_text(encoding="ascii"), f"{digest}  {archive.name}\n")
             self.assertEqual(
                 notes.read_text(encoding="utf-8"),
-                "## [5.0.0] - 2026-10-11\n\nRelease notes.\n",
+                f"## [{VERSION}] - {RELEASE_DATE}\n\nRelease notes.\n",
             )
 
     def test_git_failure_is_reported_as_release_error(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "CHANGELOG.md").write_text(
-                "## [5.0.0] - 2026-10-11\n\nNotes.\n", encoding="utf-8"
+                f"## [{VERSION}] - {RELEASE_DATE}\n\nNotes.\n", encoding="utf-8"
             )
-            (root / "history.txt").write_text("v5.0.0\n", encoding="utf-8")
+            (root / "history.txt").write_text(f"v{VERSION}\n", encoding="utf-8")
             with self.assertRaises(ReleaseError):
                 build_release(root, root / "dist")
 

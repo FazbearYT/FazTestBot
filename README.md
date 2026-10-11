@@ -30,7 +30,7 @@ The repository has a module-aware CI pipeline. Install development tools and run
 same blocking checks locally:
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m scripts.ci.run_all
 ```
 

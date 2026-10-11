@@ -20,21 +20,30 @@ class ModuleStorageIntegrationTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_url_shortener_history_uses_migrated_schema(self):
-        with patch("modules.url_shortener.handlers.db", self.database):
+        original_database = url_shortener_module._database_manager
+        url_shortener_module._database_manager = self.database
+        try:
             url_shortener_module._log_url_operation(1, "https://example.com", "https://t.ly/a")
             links = url_shortener_module._get_user_links(1)
+        finally:
+            url_shortener_module._database_manager = original_database
 
         self.assertEqual("https://example.com", links[0]["original_url"])
         self.assertEqual("https://t.ly/a", links[0]["shortened_url"])
 
     def test_ip_lookup_history_uses_migrated_schema(self):
-        with patch("modules.ip_lookup.handlers.db", self.database):
+        original_database = ip_lookup_module._database_manager
+        ip_lookup_module._database_manager = self.database
+        try:
+            self.assertTrue(ip_lookup_module._check_lookup_limit(2))
             ip_lookup_module._log_lookup(
                 2,
                 "8.8.8.8",
                 {"ip": "8.8.8.8", "city": "Test", "country": "XX", "isp": "DNS"},
             )
             lookups = ip_lookup_module._get_user_lookups(2)
+        finally:
+            ip_lookup_module._database_manager = original_database
 
         self.assertEqual("8.8.8.8", lookups[0]["query"])
         self.assertEqual("DNS", lookups[0]["isp"])

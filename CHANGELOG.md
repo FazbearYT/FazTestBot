@@ -3,6 +3,44 @@
 This file records technical changes relevant to maintainers and release operators.
 User-visible history remains available in `history.txt`.
 
+## [Unreleased]
+
+## [5.0.1] - 2026-10-11
+
+### Fixed
+
+- Non-text Telegram updates no longer crash the Easter egg fallback handler.
+- Media Downloader now reports its deliberate disabled state consistently and
+  cannot be enabled accidentally through environment configuration.
+- URL Shortener now confines personal history and chat-scoped input to private
+  chats, escapes rendered URLs, and returns safe errors without import-time
+  database initialization.
+- IP Lookup now confines searches and history to private chats, escapes all
+  provider and stored values, checks its daily quota before network access, and
+  avoids import-time database initialization.
+
+### Quality
+
+- Removed the unreachable legacy media download engine and its unused network
+  dependencies instead of shipping an unbounded, untested file-processing path.
+- Added an isolated Media Downloader test suite and mandatory module-scoped Ruff
+  checks, and expanded repository quality coverage to every core Python module.
+- Promoted Steam Deals out of the legacy CI exception list; its owned API-client
+  tests and the complete module now run under the mandatory module quality gate.
+- Promoted URL Shortener out of the legacy CI exception list with handler,
+  storage, validation, and bounded external-client regression coverage.
+- Promoted IP Lookup out of the legacy CI exception list with handler, storage,
+  metering, validation, and bounded external-client regression coverage.
+- Pinned every direct Python dependency exactly and made CI verify the installed
+  versions in addition to dependency compatibility and vulnerability auditing.
+- Pinned GitHub-hosted Linux jobs to Ubuntu 24.04 so a moving runner alias cannot
+  silently change the validation or release environment.
+
+### Release engineering
+
+- Standardized GitHub Release titles on the existing `vX.Y.Z` tag convention while
+  retaining the auditable `github-actions[bot]` publisher identity.
+
 ## [5.0.0] - 2026-10-11
 
 ### Changed
@@ -40,4 +78,6 @@ User-visible history remains available in `history.txt`.
 - Added tag-driven GitHub Release publication gated by the complete CI suite and
   by proof that the tagged commit belongs to `master` history.
 
+[5.0.1]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/FazbearYT/FazTestBot/compare/v4.5.0...v5.0.0
+[Unreleased]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.1...develop

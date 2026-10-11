@@ -22,7 +22,7 @@ env:
 jobs:
   release:
     name: Verify and publish
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Check out tagged source
@@ -79,7 +79,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             "dist/FazTestBot-${GITHUB_REF_NAME}.zip" \
             "dist/FazTestBot-${GITHUB_REF_NAME}.zip.sha256" \
-            --title "FazTestBot ${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
             --notes-file "dist/FazTestBot-${GITHUB_REF_NAME}-notes.md" \
             --verify-tag \
             --fail-on-no-commits \

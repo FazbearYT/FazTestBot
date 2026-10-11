@@ -81,6 +81,11 @@ class SettingsTests(unittest.TestCase):
         self.assertIn("CUTTLY_API_KEY", " ".join(cuttly.startup_errors()))
         self.assertIn("IPINFO_API_KEY", " ".join(ipinfo.startup_errors()))
 
+    def test_disabled_media_backend_cannot_be_enabled_accidentally(self):
+        settings = self.load({"MEDIA_DOWNLOADER_ENABLED": "true"})
+
+        self.assertIn("MEDIA_DOWNLOADER_ENABLED=true", " ".join(settings.startup_errors()))
+
     def test_loading_does_not_mutate_process_environment(self):
         before = dict(os.environ)
         with patch.dict(os.environ, {}, clear=True):

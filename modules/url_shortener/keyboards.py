@@ -13,13 +13,11 @@ def url_shortener_menu_keyboard(show_back_button: bool = True):
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton("🔗 Сократить ссылку", callback_data="url_shorten"),
-        types.InlineKeyboardButton("📋 Мои ссылки", callback_data="url_my_links")
+        types.InlineKeyboardButton("📋 Мои ссылки", callback_data="url_my_links"),
     )
 
     if show_back_button:
-        kb.add(
-            types.InlineKeyboardButton("🔙 Назад", callback_data="url_back_to_modules")
-        )
+        kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="url_back_to_modules"))
 
     return kb
 
@@ -29,11 +27,9 @@ def result_menu_keyboard(shortened_url: str):
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("🌐 Открыть", url=shortened_url),
-        types.InlineKeyboardButton("🔄 Другая ссылка", callback_data="url_again")
+        types.InlineKeyboardButton("🔄 Другая ссылка", callback_data="url_again"),
     )
-    kb.add(
-        types.InlineKeyboardButton("🔙 Назад", callback_data="url_back_to_menu")
-    )
+    kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="url_back_to_menu"))
     return kb
 
 
@@ -42,6 +38,6 @@ def my_links_keyboard():
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton("🔗 Сократить ссылку", callback_data="url_shorten"),
-        types.InlineKeyboardButton("🔙 Назад", callback_data="url_back_to_menu")
+        types.InlineKeyboardButton("🔙 Назад", callback_data="url_back_to_menu"),
     )
     return kb

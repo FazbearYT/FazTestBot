@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from scripts.ci.quality import FORMAT_TARGETS, LINT_TARGETS
 
@@ -11,6 +12,11 @@ class QualityTargetsTests(unittest.TestCase):
         self.assertIn("core/handlers.py", LINT_TARGETS)
         self.assertIn("core/keyboards.py", LINT_TARGETS)
 
+    def test_every_core_module_is_covered_by_lint(self):
+        expected = {path.as_posix() for path in Path("core").glob("*.py")}
+
+        self.assertTrue(expected <= set(LINT_TARGETS))
+
     def test_only_explicit_legacy_handler_is_exempt_from_formatting(self):
         self.assertEqual({"core/handlers.py"}, set(LINT_TARGETS) - set(FORMAT_TARGETS))
 
@@ -18,7 +24,7 @@ class QualityTargetsTests(unittest.TestCase):
         expected = {
             "modules/cipher/handlers.py",
             "modules/decision_maker/handlers.py",
-            "modules/media_downloader/handlers.py",
+            "modules/media_downloader",
             "modules/steam_deals/handlers.py",
         }
         self.assertTrue(expected <= set(LINT_TARGETS))

@@ -1,7 +1,6 @@
 # modules/media_downloader/__init__.py
 # Модуль "Media Downloader" для FazTestBot
 
-from core.module_base import BaseModule
 from .handlers import MediaDownloaderModule
 
 # Создание экземпляра модуля
@@ -11,7 +10,7 @@ media_downloader_module = MediaDownloaderModule(
     description="Загрузка видео/аудио из YouTube, TikTok, Instagram",
     icon="📥",
     version="1.3.1",
-    callback_prefix="media_"
+    callback_prefix="media_",
 )
 
-__all__ = ['media_downloader_module']
+__all__ = ["media_downloader_module"]

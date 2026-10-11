@@ -38,6 +38,13 @@ def main() -> int:
     run(
         python,
         "-m",
+        "scripts.ci.verify_dependencies",
+        "requirements.txt",
+        "requirements-dev.txt",
+    )
+    run(
+        python,
+        "-m",
         "coverage",
         "run",
         "-m",
