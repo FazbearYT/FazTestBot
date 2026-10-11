@@ -13,6 +13,9 @@ User-visible history remains available in `history.txt`.
 - URL Shortener now confines personal history and chat-scoped input to private
   chats, escapes rendered URLs, and returns safe errors without import-time
   database initialization.
+- IP Lookup now confines searches and history to private chats, escapes all
+  provider and stored values, checks its daily quota before network access, and
+  avoids import-time database initialization.
 
 ### Quality
 
@@ -24,6 +27,8 @@ User-visible history remains available in `history.txt`.
   tests and the complete module now run under the mandatory module quality gate.
 - Promoted URL Shortener out of the legacy CI exception list with handler,
   storage, validation, and bounded external-client regression coverage.
+- Promoted IP Lookup out of the legacy CI exception list with handler, storage,
+  metering, validation, and bounded external-client regression coverage.
 
 ## [5.0.0] - 2026-10-11
 

@@ -2,4 +2,3 @@
 # Remove a module from this list as soon as tests/<module>/test_*.py exists.
 cipher
 decision_maker
-ip_lookup
