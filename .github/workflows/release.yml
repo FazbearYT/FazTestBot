@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHONIOENCODING: utf-8
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  release:
+    name: Verify and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Prove tagged commit belongs to master
+        run: |
+          git fetch --no-tags origin master
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/master
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Verify tag and release metadata
+        run: python -m scripts.release verify --tag "$GITHUB_REF_NAME"
+
+      - name: Run complete audited pipeline
+        run: python -m scripts.ci.run_all --audit
+
+      - name: Build source release
+        run: python -m scripts.release build --ref "$GITHUB_SHA"
+
+      - name: Attest source archive
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/FazTestBot-${{ github.ref_name }}.zip
+
+      - name: Upload verified release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: FazTestBot-${{ github.ref_name }}
+          path: |
+            dist/FazTestBot-${{ github.ref_name }}.zip
+            dist/FazTestBot-${{ github.ref_name }}.zip.sha256
+            dist/FazTestBot-${{ github.ref_name }}-notes.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/FazTestBot-${GITHUB_REF_NAME}.zip" \
+            "dist/FazTestBot-${GITHUB_REF_NAME}.zip.sha256" \
+            --title "FazTestBot ${GITHUB_REF_NAME}" \
+            --notes-file "dist/FazTestBot-${GITHUB_REF_NAME}-notes.md" \
+            --verify-tag \
+            --fail-on-no-commits \
+            --latest
