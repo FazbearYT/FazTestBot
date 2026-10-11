@@ -20,9 +20,13 @@ class ModuleStorageIntegrationTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_url_shortener_history_uses_migrated_schema(self):
-        with patch("modules.url_shortener.handlers.db", self.database):
+        original_database = url_shortener_module._database_manager
+        url_shortener_module._database_manager = self.database
+        try:
             url_shortener_module._log_url_operation(1, "https://example.com", "https://t.ly/a")
             links = url_shortener_module._get_user_links(1)
+        finally:
+            url_shortener_module._database_manager = original_database
 
         self.assertEqual("https://example.com", links[0]["original_url"])
         self.assertEqual("https://t.ly/a", links[0]["shortened_url"])

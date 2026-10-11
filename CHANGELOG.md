@@ -10,6 +10,9 @@ User-visible history remains available in `history.txt`.
 - Non-text Telegram updates no longer crash the Easter egg fallback handler.
 - Media Downloader now reports its deliberate disabled state consistently and
   cannot be enabled accidentally through environment configuration.
+- URL Shortener now confines personal history and chat-scoped input to private
+  chats, escapes rendered URLs, and returns safe errors without import-time
+  database initialization.
 
 ### Quality
 
@@ -19,6 +22,8 @@ User-visible history remains available in `history.txt`.
   checks, and expanded repository quality coverage to every core Python module.
 - Promoted Steam Deals out of the legacy CI exception list; its owned API-client
   tests and the complete module now run under the mandatory module quality gate.
+- Promoted URL Shortener out of the legacy CI exception list with handler,
+  storage, validation, and bounded external-client regression coverage.
 
 ## [5.0.0] - 2026-10-11
 

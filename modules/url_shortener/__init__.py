@@ -1,7 +1,3 @@
-# modules/url_shortener/__init__.py
-# Модуль "URL Shortener" для FazTestBot
-
-from core.module_base import BaseModule
 from .handlers import URLShortenerModule
 
 # Создание экземпляра модуля с соблюдением стандартов v3.5+
@@ -11,7 +7,7 @@ url_shortener_module = URLShortenerModule(
     description="Сокращение ссылок через TinyURL/Cutt.ly",
     icon="🔗",
     version="1.0.0",
-    callback_prefix="url_"
+    callback_prefix="url_",
 )
 
-__all__ = ['url_shortener_module']
+__all__ = ["url_shortener_module"]
