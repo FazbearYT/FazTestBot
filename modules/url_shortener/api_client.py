@@ -53,8 +53,17 @@ class URLShortenerClient:
         if "://" not in normalized:
             normalized = DEFAULT_PROTOCOL + normalized
 
-        parsed = urlsplit(normalized)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        try:
+            parsed = urlsplit(normalized)
+            port = parsed.port
+        except ValueError:
+            return False, "❌ Неверный формат ссылки (нужен корректный HTTP(S) адрес)"
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or any(character.isspace() for character in parsed.hostname)
+            or (port is not None and not 1 <= port <= 65_535)
+        ):
             return False, "❌ Неверный формат ссылки (нужен корректный HTTP(S) адрес)"
         if parsed.username or parsed.password:
             return False, "❌ Ссылки с данными авторизации не поддерживаются"
@@ -116,8 +125,16 @@ class URLShortenerClient:
     def _is_http_url(value: Any) -> bool:
         if not isinstance(value, str):
             return False
-        parsed = urlsplit(value)
-        return parsed.scheme in {"http", "https"} and bool(parsed.hostname)
+        try:
+            parsed = urlsplit(value)
+            parsed.port
+        except ValueError:
+            return False
+        return (
+            parsed.scheme in {"http", "https"}
+            and bool(parsed.hostname)
+            and not any(character.isspace() for character in parsed.hostname)
+        )
 
     @staticmethod
     def _safe_api_failure(error: APIError, service: str) -> tuple[bool, str]:

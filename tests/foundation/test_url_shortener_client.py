@@ -36,6 +36,9 @@ class URLShortenerClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(client.validate_url("ftp://example.com")[0])
         self.assertFalse(client.validate_url("https://user:password@example.com")[0])
         self.assertFalse(client.validate_url("https://")[0])
+        self.assertFalse(client.validate_url("https://[")[0])
+        self.assertFalse(client.validate_url("https://example.com:invalid")[0])
+        self.assertFalse(client.validate_url("https://not valid.example")[0])
         self.assertFalse(client.validate_url(" " * 3)[0])
         self.assertFalse(client.validate_url("https://example.com/" + "x" * 2048)[0])
 
