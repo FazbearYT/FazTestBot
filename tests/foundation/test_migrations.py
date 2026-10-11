@@ -26,11 +26,14 @@ class DatabaseMigrationCharacterizationTests(unittest.TestCase):
 
         self.apply(migrator)
 
-        self.assertEqual("009", migrator.get_current_version())
+        self.assertEqual("010", migrator.get_current_version())
         with closing(sqlite3.connect(self.db_path)) as connection:
             tables = {
                 row[0]
                 for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+            steam_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(steam_wishlist)")
             }
         self.assertTrue(
             {
@@ -49,6 +52,7 @@ class DatabaseMigrationCharacterizationTests(unittest.TestCase):
             }
             <= tables
         )
+        self.assertIn("steam_app_id", steam_columns)
 
     def test_migrations_are_idempotent(self):
         migrator = DatabaseMigrator(self.db_path)
@@ -58,7 +62,7 @@ class DatabaseMigrationCharacterizationTests(unittest.TestCase):
 
         with closing(sqlite3.connect(self.db_path)) as connection:
             versions = connection.execute("SELECT version FROM migrations ORDER BY id").fetchall()
-        self.assertEqual([(f"{version:03d}",) for version in range(1, 10)], versions)
+        self.assertEqual([(f"{version:03d}",) for version in range(1, 11)], versions)
 
     def test_existing_legacy_data_survives_schema_baselining(self):
         database = DatabaseManager(self.db_path, retention_days=0)
@@ -84,7 +88,58 @@ class DatabaseMigrationCharacterizationTests(unittest.TestCase):
             connection.commit()
 
         self.assertEqual(["004"], migrator.apply_migrations())
-        self.assertEqual("009", migrator.get_current_version())
+        self.assertEqual("010", migrator.get_current_version())
+
+    def test_steam_currency_migration_resets_legacy_prices_once(self):
+        migrator = DatabaseMigrator(self.db_path)
+        migrator.migrations = migrator.migrations[:-1]
+        self.apply(migrator)
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            connection.execute(
+                """
+                INSERT INTO steam_wishlist
+                    (user_id, game_id, game_name, current_price, historical_low,
+                     discount_percent)
+                VALUES (1, 'game', 'Game', 10, 5, 50)
+                """
+            )
+            connection.commit()
+
+        upgraded = DatabaseMigrator(self.db_path)
+        self.assertEqual(["010"], upgraded.apply_migrations())
+
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            row = connection.execute(
+                """
+                SELECT steam_app_id, current_price, historical_low, discount_percent
+                FROM steam_wishlist
+                """
+            ).fetchone()
+        self.assertEqual((None, None, None, None), row)
+
+    def test_existing_steam_app_column_is_accepted_without_data_loss(self):
+        migrator = DatabaseMigrator(self.db_path)
+        migrator.migrations = migrator.migrations[:-1]
+        self.apply(migrator)
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            connection.execute("ALTER TABLE steam_wishlist ADD COLUMN steam_app_id TEXT")
+            connection.execute(
+                """
+                INSERT INTO steam_wishlist
+                    (user_id, game_id, game_name, steam_app_id, current_price)
+                VALUES (1, 'game', 'Game', '123', 999)
+                """
+            )
+            connection.commit()
+
+        upgraded = DatabaseMigrator(self.db_path)
+        self.assertEqual(["010"], upgraded.apply_migrations())
+
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            row = connection.execute(
+                "SELECT steam_app_id, current_price FROM steam_wishlist"
+            ).fetchone()
+        self.assertEqual(("123", 999.0), row)
 
     def test_unknown_future_version_stops_migration(self):
         migrator = DatabaseMigrator(self.db_path)

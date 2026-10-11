@@ -29,6 +29,7 @@ class ModuleManager:
         self.modules: dict[str, BaseModule] = {}  # {module_id: module_instance}
         self.callback_map: dict[str, str] = {}  # {callback_prefix: module_id}
         self._load_errors: list[dict] = []  # Ошибки загрузки для логирования
+        self._shutdown = False
 
     def discover_and_load(self, bot: Any | None = None) -> int:
         """
@@ -38,6 +39,7 @@ class ModuleManager:
         :return: Количество успешно загруженных модулей
         """
         loaded_count = 0
+        self._shutdown = False
 
         # Сканируем папку modules/
         if not os.path.exists(self.modules_path):
@@ -123,6 +125,21 @@ class ModuleManager:
                 try:
                     module_instance.on_load(bot)
                 except Exception as e:
+                    try:
+                        module_instance.on_unload(bot)
+                    except Exception as cleanup_error:
+                        logger.warning(
+                            "module cleanup after failed load also failed",
+                            exc_info=(
+                                type(cleanup_error),
+                                cleanup_error,
+                                cleanup_error.__traceback__,
+                            ),
+                            extra=event_fields(
+                                "module.failed_load_cleanup_failed",
+                                module_id=module_instance.id,
+                            ),
+                        )
                     # Do not expose a half-loaded module in menus or callback
                     # routing when its startup hook failed.
                     self.modules.pop(module_instance.id, None)
@@ -145,6 +162,22 @@ class ModuleManager:
         except Exception as e:
             self._log_error(module_name, f"Исключение при загрузке: {str(e)}", exception=e)
             return False
+
+    def shutdown(self, bot: Any | None = None) -> None:
+        """Release module-owned runtime resources exactly once."""
+
+        if self._shutdown:
+            return
+        self._shutdown = True
+        for module in reversed(tuple(self.modules.values())):
+            try:
+                module.on_unload(bot)
+            except Exception as error:
+                logger.warning(
+                    "module failed to unload cleanly",
+                    exc_info=(type(error), error, error.__traceback__),
+                    extra=event_fields("module.unload_failed", module_id=module.id),
+                )
 
     def _log_error(
         self,

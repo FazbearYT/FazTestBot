@@ -42,9 +42,23 @@ class ModuleStorageIntegrationTests(unittest.TestCase):
     def test_steam_wishlist_upsert_and_transactional_remove(self):
         with patch("modules.steam_deals.handlers.db", self.database):
             created = steam_deals_module._add_game_to_wishlist(
-                3, "10", "Original", 100.0, 90.0, 10.0
+                3,
+                "10",
+                "Original",
+                steam_app_id="100",
+                current_price=100.0,
+                historical_low=90.0,
+                discount_percent=10.0,
             )
-            updated = steam_deals_module._add_game_to_wishlist(3, "10", "Updated", 80.0, 70.0, 20.0)
+            updated = steam_deals_module._add_game_to_wishlist(
+                3,
+                "10",
+                "Updated",
+                steam_app_id="100",
+                current_price=80.0,
+                historical_low=70.0,
+                discount_percent=20.0,
+            )
             wishlist = steam_deals_module._get_user_wishlist(3)
             removed = steam_deals_module._remove_game_from_wishlist(3, 1)
             empty = steam_deals_module._get_user_wishlist(3)
@@ -53,6 +67,8 @@ class ModuleStorageIntegrationTests(unittest.TestCase):
         self.assertTrue(updated)
         self.assertEqual(1, len(wishlist))
         self.assertEqual("Updated", wishlist[0]["game_name"])
+        self.assertEqual("100", wishlist[0]["steam_app_id"])
+        self.assertEqual(80.0, wishlist[0]["current_price"])
         self.assertTrue(removed)
         self.assertEqual([], empty)
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +20,24 @@ class Migration:
     version: str
     name: str
     statements: tuple[str, ...]
+    apply: Callable[[sqlite3.Connection], None] | None = None
+
+
+def _add_steam_app_id(connection: sqlite3.Connection) -> None:
+    """Add the regional Steam identifier without replaying destructive conversion."""
+
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(steam_wishlist)").fetchall()}
+    if "steam_app_id" in columns:
+        return
+    connection.execute("ALTER TABLE steam_wishlist ADD COLUMN steam_app_id TEXT")
+    connection.execute(
+        """
+        UPDATE steam_wishlist
+        SET current_price = NULL,
+            historical_low = NULL,
+            discount_percent = NULL
+        """
+    )
 
 
 MIGRATIONS = (
@@ -198,6 +218,12 @@ MIGRATIONS = (
             """,
         ),
     ),
+    Migration(
+        "010",
+        "add_steam_app_id",
+        (),
+        apply=_add_steam_app_id,
+    ),
 )
 
 
@@ -271,8 +297,11 @@ class DatabaseMigrator:
             try:
                 with self.database.connection(write=True) as connection:
                     connection.execute("BEGIN IMMEDIATE")
-                    for statement in migration.statements:
-                        connection.execute(statement)
+                    if migration.apply is not None:
+                        migration.apply(connection)
+                    else:
+                        for statement in migration.statements:
+                            connection.execute(statement)
                     connection.execute(
                         "INSERT INTO migrations (version, name) VALUES (?, ?)",
                         (migration.version, migration.name),
