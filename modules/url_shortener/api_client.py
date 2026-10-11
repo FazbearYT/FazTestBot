@@ -1,123 +1,163 @@
-# modules/url_shortener/api_client.py
-# API клиент для сервисов сокращения ссылок
+"""Clients for the external URL shortening services."""
 
-import asyncio
-import aiohttp
-from typing import Optional, Dict, Tuple
-from .config import URL_SHORTENER_SERVICE, CUTTLY_API_KEY, DEFAULT_PROTOCOL
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+from urllib.parse import urlsplit
+
+from core.exceptions import APIError, classify_exception
+from core.http_client import AsyncHttpClient, http_client
+from core.observability import event_fields, get_logger
+from modules.url_shortener.config import CUTTLY_API_KEY, DEFAULT_PROTOCOL, URL_SHORTENER_SERVICE
+
+logger = get_logger(__name__)
+
+TINYURL_ENDPOINT = "https://tinyurl.com/api-create.php"
+CUTTLY_ENDPOINT = "https://cutt.ly/api/api.php"
+CUTTLY_STATUS_MESSAGES = {
+    0: "Плохая ссылка",
+    1: "Неправильный API ключ",
+    2: "Ссылка уже сокращена",
+    3: "Публичная ссылка",
+    4: "Слишком длинная ссылка",
+    5: "Неправильный формат ссылки",
+    6: "Ссылка не найдена",
+}
 
 
 class URLShortenerClient:
-    """Клиент для сокращения ссылок через различные API"""
+    """Validate URLs and shorten them through one bounded HTTP client."""
 
-    def __init__(self):
-        self.service = URL_SHORTENER_SERVICE
-        self.cuttly_api_key = CUTTLY_API_KEY
+    def __init__(
+        self,
+        *,
+        http: AsyncHttpClient | None = None,
+        service: str = URL_SHORTENER_SERVICE,
+        cuttly_api_key: str = CUTTLY_API_KEY,
+    ):
+        self.http = http or http_client
+        self.service = service
+        self.cuttly_api_key = cuttly_api_key
 
-    def validate_url(self, url: str) -> Tuple[bool, str]:
-        """
-        Валидация URL перед сокращением.
+    def validate_url(self, url: str) -> tuple[bool, str]:
+        """Return a normalized HTTP(S) URL or a stable validation message."""
 
-        :param url: Исходная ссылка
-        :return: (is_valid: bool, error_message: str)
-        """
         if not url or not url.strip():
             return False, "❌ Ссылка не может быть пустой"
 
-        url = url.strip()
-
-        # Проверка длины
-        if len(url) > 2048:
+        normalized = url.strip()
+        if len(normalized) > 2048:
             return False, "❌ Ссылка слишком длинная (макс. 2048 символов)"
 
-        # Добавляем протокол если отсутствует
-        has_protocol = any(url.startswith(p) for p in ["http://", "https://"])
-        if not has_protocol:
-            url = DEFAULT_PROTOCOL + url
+        if "://" not in normalized:
+            normalized = DEFAULT_PROTOCOL + normalized
 
-        # Проверка формата
-        if not url.startswith("http://") and not url.startswith("https://"):
-            return False, "❌ Неверный формат ссылки (должен начинаться с http:// или https://)"
+        try:
+            parsed = urlsplit(normalized)
+            port = parsed.port
+        except ValueError:
+            return False, "❌ Неверный формат ссылки (нужен корректный HTTP(S) адрес)"
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or any(character.isspace() for character in parsed.hostname)
+            or (port is not None and not 1 <= port <= 65_535)
+        ):
+            return False, "❌ Неверный формат ссылки (нужен корректный HTTP(S) адрес)"
+        if parsed.username or parsed.password:
+            return False, "❌ Ссылки с данными авторизации не поддерживаются"
 
-        return True, url
+        return True, normalized
 
-    async def shorten_url(self, url: str) -> Tuple[bool, str]:
-        """
-        Сокращение ссылки через выбранный API.
+    async def shorten_url(self, url: str) -> tuple[bool, str]:
+        """Shorten a URL while preserving the module's legacy result contract."""
 
-        :param url: Исходная ссылка
-        :return: (success: bool, result: str)
-        """
-        # Валидация
         is_valid, result = self.validate_url(url)
         if not is_valid:
             return False, result
 
-        url = result
-
-        # Выбор сервиса
         if self.service == "cuttly" and self.cuttly_api_key:
-            return await self._shorten_with_cuttly(url)
-        else:
-            return await self._shorten_with_tinyurl(url)
+            return await self._shorten_with_cuttly(result)
+        return await self._shorten_with_tinyurl(result)
 
-    async def _shorten_with_tinyurl(self, url: str) -> Tuple[bool, str]:
-        """Сокращение через TinyURL API"""
+    async def _shorten_with_tinyurl(self, url: str) -> tuple[bool, str]:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                        f"http://tinyurl.com/api-create.php?url={url}",
-                        timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status == 200:
-                        shortened_url = await response.text()
-                        if shortened_url and shortened_url.startswith("http"):
-                            return True, shortened_url
-                        else:
-                            return False, "❌ Ошибка: получен некорректный ответ от TinyURL"
-                    else:
-                        return False, f"❌ Ошибка TinyURL: статус {response.status}"
-        except asyncio.TimeoutError:
-            return False, "❌ Таймаут: TinyURL не отвечает"
-        except Exception as e:
-            return False, f"❌ Ошибка: {str(e)}"
+            shortened_url = (
+                await self.http.get_text(
+                    "tinyurl",
+                    TINYURL_ENDPOINT,
+                    params={"url": url},
+                )
+            ).strip()
+        except APIError as error:
+            return self._safe_api_failure(error, "tinyurl")
 
-    async def _shorten_with_cuttly(self, url: str) -> Tuple[bool, str]:
-        """Сокращение через Cutt.ly API"""
+        if not self._is_http_url(shortened_url):
+            return False, "❌ TinyURL вернул некорректный ответ"
+        return True, shortened_url
+
+    async def _shorten_with_cuttly(self, url: str) -> tuple[bool, str]:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                        f"https://cutt.ly/api/api.php?key={self.cuttly_api_key}&short={url}",
-                        timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if data.get("url", {}).get("status") == 7:
-                            shortened_url = data.get("url", {}).get("shortLink", "")
-                            if shortened_url:
-                                return True, shortened_url
-                            else:
-                                return False, "❌ Ошибка: пустая ссылка от Cutt.ly"
-                        else:
-                            status_codes = {
-                                0: "Плохая ссылка",
-                                1: "Неправильный API ключ",
-                                2: "Ссылка уже сокращена",
-                                3: "Публичная ссылка",
-                                4: "Слишком длинная ссылка",
-                                5: "Неправильный формат ссылки",
-                                6: "Ссылка не найдена",
-                                7: "Успешно"
-                            }
-                            status = data.get("url", {}).get("status", -1)
-                            return False, f"❌ Ошибка Cutt.ly: {status_codes.get(status, 'Неизвестная ошибка')}"
-                    else:
-                        return False, f"❌ Ошибка Cutt.ly: статус {response.status}"
-        except asyncio.TimeoutError:
-            return False, "❌ Таймаут: Cutt.ly не отвечает"
-        except Exception as e:
-            return False, f"❌ Ошибка: {str(e)}"
+            payload = await self.http.get_json(
+                "cuttly",
+                CUTTLY_ENDPOINT,
+                params={"key": self.cuttly_api_key, "short": url},
+            )
+        except APIError as error:
+            return self._safe_api_failure(error, "cuttly")
+
+        response = payload.get("url") if isinstance(payload, Mapping) else None
+        if not isinstance(response, Mapping):
+            return False, "❌ Cutt.ly вернул некорректный ответ"
+
+        status = response.get("status")
+        if status != 7:
+            message = CUTTLY_STATUS_MESSAGES.get(status, "Неизвестная ошибка")
+            return False, f"❌ Ошибка Cutt.ly: {message}"
+
+        shortened_url = response.get("shortLink")
+        if not isinstance(shortened_url, str) or not self._is_http_url(shortened_url):
+            return False, "❌ Cutt.ly вернул некорректную ссылку"
+        return True, shortened_url
+
+    @staticmethod
+    def _is_http_url(value: Any) -> bool:
+        if not isinstance(value, str):
+            return False
+        try:
+            parsed = urlsplit(value)
+            parsed.port
+        except ValueError:
+            return False
+        return (
+            parsed.scheme in {"http", "https"}
+            and bool(parsed.hostname)
+            and not any(character.isspace() for character in parsed.hostname)
+        )
+
+    @staticmethod
+    def _safe_api_failure(error: APIError, service: str) -> tuple[bool, str]:
+        disposition = classify_exception(error)
+        logger.log(
+            disposition.log_level,
+            "external URL shortening request failed",
+            extra=event_fields(
+                "url_shortener.request_failed",
+                service=service,
+                error_code=disposition.code,
+                error_category=disposition.category.value,
+                retryable=disposition.retryable,
+            ),
+        )
+        return False, disposition.user_message
 
 
-# Глобальный экземпляр клиента
 url_client = URLShortenerClient()
+
+__all__ = [
+    "CUTTLY_ENDPOINT",
+    "TINYURL_ENDPOINT",
+    "URLShortenerClient",
+    "url_client",
+]

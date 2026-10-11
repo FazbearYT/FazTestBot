@@ -35,9 +35,10 @@ class IPLookupModule(BaseModule):
         ОБЯЗАТЕЛЬНО: Вход в модуль — показ меню.
         """
         chat_id = call.message.chat.id
+        actor_id = call.from_user.id
         message_id = call.message.message_id
 
-        self.set_user_state(chat_id, 'message_id', message_id)
+        self.set_interaction_state(actor_id, chat_id, 'message_id', message_id)
 
         bot.edit_message_text(
             chat_id=chat_id,
@@ -59,6 +60,7 @@ class IPLookupModule(BaseModule):
         ОБЯЗАТЕЛЬНО: Обработка колбэков внутри модуля.
         """
         chat_id = call.message.chat.id
+        actor_id = call.from_user.id
         message_id = call.message.message_id
 
         try:
@@ -84,7 +86,7 @@ class IPLookupModule(BaseModule):
                     reply_markup=kb,
                     parse_mode="HTML"
                 )
-                self.cleanup_user_state(chat_id)
+                self.cleanup_interaction_state(actor_id, chat_id)
                 return
 
             # Назад в меню модуля
@@ -100,7 +102,7 @@ class IPLookupModule(BaseModule):
 
             # Поиск IP
             if call.data == "ip_search":
-                self.set_user_state(chat_id, 'query_type', 'search')
+                self.set_interaction_state(actor_id, chat_id, 'query_type', 'search')
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -116,7 +118,7 @@ class IPLookupModule(BaseModule):
 
             # История
             if call.data == "ip_history":
-                lookups = self._get_user_lookups(chat_id)
+                lookups = self._get_user_lookups(actor_id)
 
                 if not lookups:
                     text = "📋 <b>История запросов</b>\n\n"
@@ -146,7 +148,7 @@ class IPLookupModule(BaseModule):
 
             # Повторный поиск
             if call.data == "ip_search_again":
-                self.set_user_state(chat_id, 'query_type', 'search')
+                self.set_interaction_state(actor_id, chat_id, 'query_type', 'search')
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -174,6 +176,7 @@ class IPLookupModule(BaseModule):
     def _process_ip_input(self, message, bot):
         """Обработка ввода IP адреса"""
         chat_id = message.chat.id
+        actor_id = message.from_user.id
         ip = message.text.strip()
 
         # Удаляем сообщение пользователя
@@ -182,7 +185,7 @@ class IPLookupModule(BaseModule):
         except:
             pass
 
-        message_id = self.get_user_state(chat_id, 'message_id')
+        message_id = self.get_interaction_state(actor_id, chat_id, 'message_id')
 
         if message_id is None:
             bot.send_message(
@@ -193,7 +196,7 @@ class IPLookupModule(BaseModule):
             return
 
         # Проверяем лимит
-        if not self._check_lookup_limit(chat_id):
+        if not self._check_lookup_limit(actor_id):
             bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
@@ -231,7 +234,7 @@ class IPLookupModule(BaseModule):
             )
 
             # Логируем
-            self._log_lookup(chat_id, ip, info)
+            self._log_lookup(actor_id, ip, info)
         else:
             error_msg = info.get('error', 'Неизвестная ошибка')
 

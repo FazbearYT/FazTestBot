@@ -37,10 +37,11 @@ class URLShortenerModule(BaseModule):
         :param call: Объект CallbackQuery
         """
         chat_id = call.message.chat.id
+        actor_id = call.from_user.id
         message_id = call.message.message_id
 
         # Инициализируем состояние пользователя
-        self.set_user_state(chat_id, 'message_id', message_id)
+        self.set_interaction_state(actor_id, chat_id, 'message_id', message_id)
 
         # Показываем меню с кнопкой "Назад"
         bot.edit_message_text(
@@ -59,6 +60,7 @@ class URLShortenerModule(BaseModule):
         :param call: Объект CallbackQuery
         """
         chat_id = call.message.chat.id
+        actor_id = call.from_user.id
         message_id = call.message.message_id
 
         try:
@@ -91,7 +93,7 @@ class URLShortenerModule(BaseModule):
                     parse_mode="HTML"
                 )
                 # Очищаем состояние пользователя
-                self.cleanup_user_state(chat_id)
+                self.cleanup_interaction_state(actor_id, chat_id)
                 return
 
             # Назад в меню модуля (из результата сокращения)
@@ -120,7 +122,7 @@ class URLShortenerModule(BaseModule):
             # Мои ссылки
             elif call.data == "url_my_links":
                 # Получаем историю ссылок пользователя из БД
-                links = self._get_user_links(chat_id)
+                links = self._get_user_links(actor_id)
 
                 if not links:
                     text = "📋 <b>Мои ссылки</b>\n\n"
@@ -180,6 +182,7 @@ class URLShortenerModule(BaseModule):
     def _process_url_input(self, message, bot):
         """Обработка ввода ссылки для сокращения"""
         chat_id = message.chat.id
+        actor_id = message.from_user.id
         url = message.text.strip()
 
         # Удаляем сообщение пользователя (приватность)
@@ -189,7 +192,7 @@ class URLShortenerModule(BaseModule):
             pass
 
         # Проверяем состояние
-        message_id = self.get_user_state(chat_id, 'message_id')
+        message_id = self.get_interaction_state(actor_id, chat_id, 'message_id')
         if message_id is None:
             from core.keyboards import back_to_main_keyboard
             bot.send_message(
@@ -207,7 +210,7 @@ class URLShortenerModule(BaseModule):
                 shortened_url = result
 
                 # Логируем операцию в БД
-                self._log_url_operation(chat_id, url, shortened_url)
+                self._log_url_operation(actor_id, url, shortened_url)
 
                 # Формируем сообщение с результатом (как в шифраторе)
                 original_display = url if len(url) <= 50 else url[:50] + "..."
