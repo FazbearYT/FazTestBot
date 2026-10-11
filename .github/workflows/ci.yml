@@ -61,6 +61,9 @@ jobs:
       - name: Enforce repository and module policy
         run: python -m scripts.ci.check_repository
 
+      - name: Validate release metadata
+        run: python -m scripts.release verify
+
   quality:
     name: Static quality and application smoke
     runs-on: ubuntu-latest

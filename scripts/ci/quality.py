@@ -26,6 +26,7 @@ LINT_TARGETS = (
     "core/settings.py",
     "core/state.py",
     "core/storage.py",
+    "core/version.py",
     "modules/cipher/handlers.py",
     "modules/decision_maker/handlers.py",
     "modules/ip_lookup/api_client.py",
@@ -37,6 +38,7 @@ LINT_TARGETS = (
     "config.py",
     "scripts/doctor.py",
     "scripts/database.py",
+    "scripts/release.py",
     "scripts/ci",
     "tests",
 )

@@ -11,9 +11,10 @@ from core.paths import EXPORTS_DIR as EXPORTS_DIR
 from core.paths import TEMP_DIR as TEMP_DIR
 from core.settings import ConfigurationError as ConfigurationError
 from core.settings import load_settings
+from core.version import RELEASE_DATE as RELEASE_DATE
+from core.version import VERSION as VERSION
 
-VERSION = "4.5.0"
-LAST_UPDATE_DATE = "10.10.2026"
+LAST_UPDATE_DATE = RELEASE_DATE
 AUTHOR = "@Fazbear_r"
 
 _settings = load_settings()
