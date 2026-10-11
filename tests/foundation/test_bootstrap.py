@@ -22,7 +22,7 @@ class DatabaseBootstrapTests(unittest.TestCase):
 
         applied = migrate_database_safely(self.db_path, backup_manager=backup_manager)
 
-        self.assertEqual([f"{version:03d}" for version in range(1, 10)], applied)
+        self.assertEqual([f"{version:03d}" for version in range(1, 11)], applied)
         backup_manager.create_backup.assert_not_called()
 
     def test_existing_database_is_backed_up_before_migration(self):
@@ -46,7 +46,7 @@ class DatabaseBootstrapTests(unittest.TestCase):
         applied = migrate_database_safely(self.db_path, backup_manager=backup_manager)
 
         backup_manager.create_backup.assert_called_once_with(manual=False)
-        self.assertEqual("009", applied[-1])
+        self.assertEqual("010", applied[-1])
         with closing(sqlite3.connect(self.db_path)) as connection:
             value = connection.execute("SELECT value FROM legacy_marker").fetchone()[0]
         self.assertEqual("preserved", value)

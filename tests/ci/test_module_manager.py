@@ -39,6 +39,23 @@ class SnapshotFailingModule(FailingModule):
         raise RuntimeError("must not break dashboard")
 
 
+class LifecycleModule(FailingModule):
+    def __init__(self, module_id, events, *, fail=False):
+        super().__init__()
+        self.id = module_id
+        self.name = module_id
+        self.events = events
+        self.fail = fail
+
+    def on_load(self, bot):
+        return None
+
+    def on_unload(self, bot):
+        self.events.append((self.id, bot))
+        if self.fail:
+            raise RuntimeError("cleanup failed")
+
+
 class ModuleManagerTests(unittest.TestCase):
     def test_on_load_failure_rolls_back_registration(self):
         manager = ModuleManager()
@@ -79,6 +96,20 @@ class ModuleManagerTests(unittest.TestCase):
         self.assertEqual(["snapshot_broken", "unavailable"], [item.module_id for item in snapshots])
         self.assertTrue(all(item.status == "error" for item in snapshots))
         self.assertNotIn("secret details", repr(snapshots))
+
+    def test_shutdown_unloads_in_reverse_order_once_and_isolates_failures(self):
+        manager = ModuleManager()
+        events = []
+        bot = object()
+        manager.modules = {
+            "first": LifecycleModule("first", events),
+            "second": LifecycleModule("second", events, fail=True),
+        }
+
+        manager.shutdown(bot)
+        manager.shutdown(bot)
+
+        self.assertEqual([("second", bot), ("first", bot)], events)
 
 
 if __name__ == "__main__":

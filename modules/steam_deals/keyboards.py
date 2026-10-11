@@ -58,16 +58,6 @@ def add_game_keyboard():
     return kb
 
 
-def search_results_keyboard(game_id: str):
-    """Клавиатура для результатов поиска"""
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        types.InlineKeyboardButton("✅ Добавить", callback_data=f"steam_add_game_{game_id}"),
-        types.InlineKeyboardButton("🔙 Отмена", callback_data="steam_back_to_menu")
-    )
-    return kb
-
-
 def confirm_delete_keyboard():
     """Клавиатура для подтверждения удаления"""
     kb = types.InlineKeyboardMarkup(row_width=1)

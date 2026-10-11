@@ -11,7 +11,7 @@ cipher_module = CipherModule(
     name="Шифратор",
     description="Шифрование текста: Морзе, числовой, Цезарь, QR-код",
     icon="🔐",
-    version="2.6.0",  # Наследует версию от v2.6
+    version="2.7.2",  # Наследует версию от v2.6 + интеграция Leet
     callback_prefix="cipher_"
 )
 

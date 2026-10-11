@@ -149,9 +149,11 @@ class BotRuntimeTests(unittest.TestCase):
 
         scheduler.start.assert_called_once_with()
         scheduler.shutdown.assert_called_once_with(wait=False)
+        runtime.module_manager.shutdown.assert_called_once_with(bot_instance)
         bot_instance.stop_bot.assert_called_once_with()
         application_lock.release.assert_called_once_with()
         runtime.shutdown()
+        runtime.module_manager.shutdown.assert_called_once_with(bot_instance)
         bot_instance.stop_bot.assert_called_once_with()
         application_lock.release.assert_called_once_with()
 
@@ -168,4 +170,5 @@ class BotRuntimeTests(unittest.TestCase):
 
         scheduler.shutdown.assert_not_called()
         bot_instance.infinity_polling.assert_not_called()
+        runtime.module_manager.shutdown.assert_called_once_with(bot_instance)
         bot_instance.stop_bot.assert_called_once_with()

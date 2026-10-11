@@ -48,10 +48,15 @@ class BotRuntime:
                 self.scheduler.shutdown(wait=False)
         finally:
             try:
-                self.bot.stop_bot()
+                shutdown_modules = getattr(self.module_manager, "shutdown", None)
+                if callable(shutdown_modules):
+                    shutdown_modules(self.bot)
             finally:
-                if self.application_lock is not None:
-                    self.application_lock.release()
+                try:
+                    self.bot.stop_bot()
+                finally:
+                    if self.application_lock is not None:
+                        self.application_lock.release()
 
 
 def build_runtime(
@@ -118,7 +123,12 @@ def build_runtime(
                 replace_existing=True,
             )
     except Exception:
-        bot.stop_bot()
+        try:
+            shutdown_modules = getattr(manager, "shutdown", None)
+            if callable(shutdown_modules):
+                shutdown_modules(bot)
+        finally:
+            bot.stop_bot()
         raise
 
     return BotRuntime(
