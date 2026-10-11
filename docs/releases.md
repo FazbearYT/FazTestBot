@@ -38,7 +38,10 @@ the version and both changelogs together when preparing promotion.
 The tag starts the Release workflow. It proves the commit is in `origin/master`,
 checks that the tag matches `core.version`, repeats the full audited CI suite, builds
 a source ZIP from the tagged Git tree, emits its SHA-256 checksum, creates a build
-provenance attestation, and publishes an immutable GitHub Release.
+provenance attestation, and publishes an immutable GitHub Release titled exactly
+like its SemVer tag (`vX.Y.Z`). The publisher is intentionally `github-actions[bot]`
+because the verified workflow, rather than a maintainer's personal token, performs
+the release operation.
 
 Run `python -m scripts.release verify --tag vX.Y.Z` to check metadata without
 building, or `python -m scripts.release build --ref HEAD` to inspect local artifacts.
