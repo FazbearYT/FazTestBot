@@ -5,6 +5,8 @@ User-visible history remains available in `history.txt`.
 
 ## [Unreleased]
 
+## [5.0.1] - 2026-10-11
+
 ### Fixed
 
 - Non-text Telegram updates no longer crash the Easter egg fallback handler.
@@ -76,5 +78,6 @@ User-visible history remains available in `history.txt`.
 - Added tag-driven GitHub Release publication gated by the complete CI suite and
   by proof that the tagged commit belongs to `master` history.
 
+[5.0.1]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/FazbearYT/FazTestBot/compare/v4.5.0...v5.0.0
-[Unreleased]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.0...develop
+[Unreleased]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.1...develop
