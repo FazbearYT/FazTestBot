@@ -5,6 +5,8 @@ User-visible history remains available in `history.txt`.
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-10-12
+
 ### Changed
 
 - Runtime database, backups, logs, downloads, and exports can be placed on durable
@@ -90,4 +92,5 @@ User-visible history remains available in `history.txt`.
 
 [5.0.1]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/FazbearYT/FazTestBot/compare/v4.5.0...v5.0.0
-[Unreleased]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.1...develop
+[5.1.0]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.1...v5.1.0
+[Unreleased]: https://github.com/FazbearYT/FazTestBot/compare/v5.1.0...develop
