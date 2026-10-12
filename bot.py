@@ -214,7 +214,13 @@ def main() -> int:
 
     try:
         _print_startup_summary(runtime, settings)
-        runtime.run()
+        from core.runtime_status import RuntimeStatus
+        from core.signals import ShutdownSignalHandlers
+        from core.version import VERSION
+
+        with RuntimeStatus(VERSION, runtime.loaded_count):
+            with ShutdownSignalHandlers(runtime.shutdown) as shutdown_signals:
+                runtime.run()
     except KeyboardInterrupt:
         runtime.shutdown()
         runtime_logger.info(
@@ -229,6 +235,15 @@ def main() -> int:
             extra=event_fields("application.runtime_failed"),
         )
         return 1
+    if shutdown_signals.received is not None:
+        runtime_logger.info(
+            "FazTestBot stopped by process signal",
+            extra=event_fields(
+                "application.stopped",
+                reason="process_signal",
+                signal=shutdown_signals.received.name,
+            ),
+        )
     return 0
 
 
