@@ -5,6 +5,11 @@ User-visible history remains available in `history.txt`.
 
 ## [Unreleased]
 
+### Quality
+
+- Cipher now has an owned regression suite and mandatory module-scoped lint,
+  formatting, and test gates instead of a legacy CI exemption.
+
 ## [5.1.0] - 2026-10-12
 
 ### Changed
