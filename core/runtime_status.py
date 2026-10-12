@@ -6,7 +6,7 @@ import json
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +43,7 @@ class RuntimeStatus:
         self.version = version
         self.loaded_module_count = loaded_module_count
         self.pid = os.getpid() if pid is None else pid
-        self._now = now or (lambda: datetime.now(UTC))
+        self._now = now or (lambda: datetime.now(timezone.utc))
 
     def __enter__(self) -> RuntimeStatus:
         self.publish()

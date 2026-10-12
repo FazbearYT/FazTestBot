@@ -1,7 +1,7 @@
 import json
 import tempfile
 import unittest
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -18,7 +18,7 @@ class RuntimeStatusTests(unittest.TestCase):
                 6,
                 path=path,
                 pid=123,
-                now=lambda: datetime(2026, 10, 12, 8, 30, tzinfo=UTC),
+                now=lambda: datetime(2026, 10, 12, 8, 30, tzinfo=timezone.utc),
             )
 
             with status:
