@@ -477,9 +477,9 @@ class DecisionMakerModule(BaseModule):
     def _process_list_input(self, message, bot):
         """Обработка ввода списка"""
         chat_id = message.chat.id
-        text = message.text.strip()
 
         try:
+            text = (message.text or "").strip()
             # Получаем message_id ДО удаления сообщения
             message_id = self.get_user_state(chat_id, "message_id")
 
@@ -657,7 +657,7 @@ class DecisionMakerModule(BaseModule):
                 )
 
             # Парсим диапазон
-            text = message.text.strip()
+            text = (message.text or "").strip()
             if "-" not in text:
                 if message_id:
                     bot.edit_message_text(

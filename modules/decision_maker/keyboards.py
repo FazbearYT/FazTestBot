@@ -11,11 +11,9 @@ def decision_maker_menu_keyboard():
         types.InlineKeyboardButton("🎲 Числа", callback_data="dm_numbers"),
         types.InlineKeyboardButton("📝 Список", callback_data="dm_list"),
         types.InlineKeyboardButton("⚔️ Dota 2", callback_data="dm_dota2"),
-        types.InlineKeyboardButton("🪙 Монетка", callback_data="dm_coin")
+        types.InlineKeyboardButton("🪙 Монетка", callback_data="dm_coin"),
     )
-    kb.add(
-        types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_modules")
-    )
+    kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_modules"))
     return kb
 
 
@@ -26,11 +24,9 @@ def number_range_keyboard():
         types.InlineKeyboardButton("1-10", callback_data="dm_range_1_10"),
         types.InlineKeyboardButton("1-100", callback_data="dm_range_1_100"),
         types.InlineKeyboardButton("1-1000", callback_data="dm_range_1_1000"),
-        types.InlineKeyboardButton("Свой", callback_data="dm_range_custom")
+        types.InlineKeyboardButton("Свой", callback_data="dm_range_custom"),
     )
-    kb.add(
-        types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_menu")
-    )
+    kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_menu"))
     return kb
 
 
@@ -42,16 +38,12 @@ def dota2_hero_keyboard():
         types.InlineKeyboardButton("💪 Сила", callback_data="dm_dota2_strength"),
         types.InlineKeyboardButton("🗡️ Ловкость", callback_data="dm_dota2_agility"),
         types.InlineKeyboardButton("🧠 Интеллект", callback_data="dm_dota2_intel"),
-        types.InlineKeyboardButton("⚡ Универсал", callback_data="dm_dota2_universal")
+        types.InlineKeyboardButton("⚡ Универсал", callback_data="dm_dota2_universal"),
     )
     # Затем случайный выбор
-    kb.add(
-        types.InlineKeyboardButton("🎲 Случайный", callback_data="dm_dota2_random")
-    )
+    kb.add(types.InlineKeyboardButton("🎲 Случайный", callback_data="dm_dota2_random"))
     # Внизу назад
-    kb.add(
-        types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_menu")
-    )
+    kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_menu"))
     return kb
 
 
@@ -60,11 +52,9 @@ def coin_flip_keyboard():
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("🪙 Подбросить", callback_data="dm_coin_flip"),
-        types.InlineKeyboardButton("📊 Статистика", callback_data="dm_coin_stats")
+        types.InlineKeyboardButton("📊 Статистика", callback_data="dm_coin_stats"),
     )
-    kb.add(
-        types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_menu")
-    )
+    kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_menu"))
     return kb
 
 
@@ -73,7 +63,7 @@ def result_keyboard(back_callback: str = "dm_back_to_menu"):
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("🔄 Ещё раз", callback_data="dm_again"),
-        types.InlineKeyboardButton("🔙 К меню", callback_data=back_callback)
+        types.InlineKeyboardButton("🔙 К меню", callback_data=back_callback),
     )
     return kb
 
@@ -81,10 +71,6 @@ def result_keyboard(back_callback: str = "dm_back_to_menu"):
 def list_options_keyboard():
     """Клавиатура для выбора из списка"""
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        types.InlineKeyboardButton("📝 Ввести список", callback_data="dm_list_input")
-    )
-    kb.add(
-        types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_menu")
-    )
+    kb.add(types.InlineKeyboardButton("📝 Ввести список", callback_data="dm_list_input"))
+    kb.add(types.InlineKeyboardButton("🔙 Назад", callback_data="dm_back_to_menu"))
     return kb

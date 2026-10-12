@@ -9,6 +9,8 @@ User-visible history remains available in `history.txt`.
 
 - Cipher now has an owned regression suite and mandatory module-scoped lint,
   formatting, and test gates instead of a legacy CI exemption.
+- Decision Maker now has the same owned quality gate, and its follow-up handlers
+  treat non-text Telegram updates as validation errors instead of crashing.
 
 ## [5.1.0] - 2026-10-12
 
