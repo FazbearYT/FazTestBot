@@ -19,6 +19,12 @@ python bot.py
 Process environment variables override values from `.env`. Secret values are never
 stored in tracked Python files or printed by the diagnostic command.
 
+Runtime state defaults to the ignored `temp/` directory. Set
+`FAZTESTBOT_DATA_DIR` to place the database, backups, logs, downloads, and exports
+on persistent storage outside the source checkout. Relative paths are resolved from
+the repository root. Changing this setting does not move existing data; follow the
+database backup and restore procedure when relocating an installation.
+
 For an existing installation, copy the values from the legacy ignored `secrets.py`
 to `.env`. After `python -m scripts.doctor` succeeds and the bot starts correctly,
 delete `secrets.py`; leaving it in the repository root shadows Python's standard
@@ -49,6 +55,10 @@ restore are documented in [docs/admin-panel.md](docs/admin-panel.md).
 
 External HTTP resilience and transient interaction-state conventions are documented
 in [docs/networking.md](docs/networking.md).
+
+The single-instance runtime contract, readiness/liveness probes, persistent data
+layout, and update/rollback boundary are documented in
+[docs/deployment.md](docs/deployment.md).
 
 ## Releases
 

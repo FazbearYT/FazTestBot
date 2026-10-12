@@ -5,6 +5,18 @@ User-visible history remains available in `history.txt`.
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-10-12
+
+### Changed
+
+- Runtime database, backups, logs, downloads, and exports can be placed on durable
+  storage with `FAZTESTBOT_DATA_DIR`; readiness checks now inspect free space on
+  that configured volume.
+- `SIGINT` and `SIGTERM` now trigger the same idempotent shutdown path as normal
+  runtime completion, allowing service managers to stop the bot cleanly.
+- A local liveness probe now verifies both the published ready status and ownership
+  of the single-instance process lock without contacting Telegram.
+
 ## [5.0.1] - 2026-10-11
 
 ### Fixed
@@ -80,4 +92,5 @@ User-visible history remains available in `history.txt`.
 
 [5.0.1]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/FazbearYT/FazTestBot/compare/v4.5.0...v5.0.0
-[Unreleased]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.1...develop
+[5.1.0]: https://github.com/FazbearYT/FazTestBot/compare/v5.0.1...v5.1.0
+[Unreleased]: https://github.com/FazbearYT/FazTestBot/compare/v5.1.0...develop
