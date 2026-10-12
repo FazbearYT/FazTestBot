@@ -56,6 +56,10 @@ restore are documented in [docs/admin-panel.md](docs/admin-panel.md).
 External HTTP resilience and transient interaction-state conventions are documented
 in [docs/networking.md](docs/networking.md).
 
+The single-instance runtime contract, readiness/liveness probes, persistent data
+layout, and update/rollback boundary are documented in
+[docs/deployment.md](docs/deployment.md).
+
 ## Releases
 
 The application version is declared once in `core/version.py`. Release metadata,

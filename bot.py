@@ -214,10 +214,13 @@ def main() -> int:
 
     try:
         _print_startup_summary(runtime, settings)
+        from core.runtime_status import RuntimeStatus
         from core.signals import ShutdownSignalHandlers
+        from core.version import VERSION
 
-        with ShutdownSignalHandlers(runtime.shutdown) as shutdown_signals:
-            runtime.run()
+        with RuntimeStatus(VERSION, runtime.loaded_count):
+            with ShutdownSignalHandlers(runtime.shutdown) as shutdown_signals:
+                runtime.run()
     except KeyboardInterrupt:
         runtime.shutdown()
         runtime_logger.info(
