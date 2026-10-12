@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from core.health import build_health_report
-from core.paths import DATABASE_PATH, ENV_FILE, ROOT_DIR, SECRETS_FILE
+from core.paths import DATA_DIR, DATABASE_PATH, ENV_FILE, SECRETS_FILE
 from core.settings import ConfigurationError, load_settings
 
 
@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env-file", type=Path, default=ENV_FILE)
     parser.add_argument("--db-path", type=Path, default=DATABASE_PATH)
-    parser.add_argument("--root-path", type=Path, default=ROOT_DIR, help=argparse.SUPPRESS)
+    parser.add_argument("--root-path", type=Path, default=DATA_DIR, help=argparse.SUPPRESS)
     parser.add_argument("--secrets-path", type=Path, default=SECRETS_FILE, help=argparse.SUPPRESS)
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args(argv)

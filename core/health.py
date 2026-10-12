@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from core.migrations import DatabaseMigrator, MigrationError
-from core.paths import DATABASE_PATH, ROOT_DIR, SECRETS_FILE
+from core.paths import DATA_DIR, DATABASE_PATH, SECRETS_FILE
 from core.settings import Settings
 from core.storage import DatabaseIntegrityError, SQLiteDatabase
 
@@ -122,7 +122,7 @@ def build_health_report(
     settings: Settings,
     *,
     db_path: str | Path = DATABASE_PATH,
-    root_path: str | Path = ROOT_DIR,
+    root_path: str | Path = DATA_DIR,
     secrets_path: str | Path = SECRETS_FILE,
 ) -> HealthReport:
     """Inspect local readiness without migrations, writes, or network requests."""

@@ -5,6 +5,7 @@ these constants while configuration is migrated incrementally.
 """
 
 from core.paths import BACKUPS_DIR as BACKUPS_DIR
+from core.paths import DATA_DIR as DATA_DIR
 from core.paths import DATABASE_PATH as DATABASE_PATH
 from core.paths import DOWNLOADS_DIR as DOWNLOADS_DIR
 from core.paths import EXPORTS_DIR as EXPORTS_DIR

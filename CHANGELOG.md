@@ -5,6 +5,12 @@ User-visible history remains available in `history.txt`.
 
 ## [Unreleased]
 
+### Changed
+
+- Runtime database, backups, logs, downloads, and exports can be placed on durable
+  storage with `FAZTESTBOT_DATA_DIR`; readiness checks now inspect free space on
+  that configured volume.
+
 ## [5.0.1] - 2026-10-11
 
 ### Fixed
