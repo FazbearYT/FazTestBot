@@ -10,6 +10,8 @@ User-visible history remains available in `history.txt`.
 - Runtime database, backups, logs, downloads, and exports can be placed on durable
   storage with `FAZTESTBOT_DATA_DIR`; readiness checks now inspect free space on
   that configured volume.
+- `SIGINT` and `SIGTERM` now trigger the same idempotent shutdown path as normal
+  runtime completion, allowing service managers to stop the bot cleanly.
 
 ## [5.0.1] - 2026-10-11
 
