@@ -12,6 +12,14 @@ User-visible history remains available in `history.txt`.
 - Decision Maker now has the same owned quality gate, and its follow-up handlers
   treat non-text Telegram updates as validation errors instead of crashing.
 
+### Deployment
+
+- Added a manual Oracle Cloud Ampere A1 pilot with an unprivileged, sandboxed
+  systemd service and separated immutable code, secrets, and persistent data.
+- Added serialized release installation with SHA-256 verification, readiness,
+  pre-update SQLite backup, liveness enforcement, and code rollback. Production
+  CD remains deferred until the live pilot and off-instance restore are proven.
+
 ## [5.1.0] - 2026-10-12
 
 ### Changed

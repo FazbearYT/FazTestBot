@@ -102,3 +102,7 @@ An update procedure should always:
 Automatic deployment remains deferred until the target can implement these steps,
 protect production secrets with an approval-gated GitHub Environment, serialize
 deployments, and report a verifiable rollback result.
+
+The selected pilot target is an Oracle Cloud Infrastructure Always Free Ampere A1
+VM. Its host bootstrap, hardened systemd unit, manual release deployment, and
+operator checks are documented in [deployment-oracle.md](deployment-oracle.md).
