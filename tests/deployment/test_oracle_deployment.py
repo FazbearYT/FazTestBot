@@ -33,6 +33,7 @@ class OracleDeploymentContractTests(unittest.TestCase):
         self.assertIn("ExecStart=/opt/faztestbot/current/.venv/bin/python bot.py", unit)
         self.assertIn("ReadWritePaths=/var/lib/faztestbot", unit)
         self.assertIn("NoNewPrivileges=true", unit)
+        self.assertIn("PrivateDevices=true", unit)
         self.assertIn("Restart=on-failure", unit)
         self.assertNotIn("EnvironmentFile=", unit)
 
@@ -48,6 +49,7 @@ class OracleDeploymentContractTests(unittest.TestCase):
 
         for required in (
             "flock --nonblock",
+            "--retry-all-errors",
             "sha256sum --check --strict",
             "-m scripts.release verify --tag",
             "-m scripts.doctor --json",

@@ -60,8 +60,10 @@ cleanup() {
 trap cleanup EXIT
 
 curl --fail --location --proto '=https' --tlsv1.2 \
+  --retry 3 --retry-all-errors --connect-timeout 10 --max-time 300 \
   --output "${work_dir}/${ARCHIVE}" "${RELEASE_URL}/${ARCHIVE}"
 curl --fail --location --proto '=https' --tlsv1.2 \
+  --retry 3 --retry-all-errors --connect-timeout 10 --max-time 60 \
   --output "${work_dir}/${CHECKSUM}" "${RELEASE_URL}/${CHECKSUM}"
 
 (
@@ -84,7 +86,8 @@ chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${candidate_dir}"
 runuser -u "${SERVICE_USER}" -- python3 -m venv "${candidate_dir}/.venv"
 runuser -u "${SERVICE_USER}" -- \
   "${candidate_dir}/.venv/bin/python" -m pip install \
-  --disable-pip-version-check --requirement "${candidate_dir}/requirements.txt"
+  --disable-pip-version-check --retries 3 --timeout 30 \
+  --requirement "${candidate_dir}/requirements.txt"
 (
   cd "${candidate_dir}"
   runuser -u "${SERVICE_USER}" -- \

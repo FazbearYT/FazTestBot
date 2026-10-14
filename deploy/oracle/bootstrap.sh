@@ -29,6 +29,13 @@ if ! id --user "${SERVICE_USER}" >/dev/null 2>&1; then
     --home-dir "${DATA_ROOT}" \
     --shell /usr/sbin/nologin \
     "${SERVICE_USER}"
+else
+  actual_group="$(id --group --name "${SERVICE_USER}")"
+  actual_home="$(getent passwd "${SERVICE_USER}" | cut -d: -f6)"
+  if [[ "${actual_group}" != "${SERVICE_GROUP}" || "${actual_home}" != "${DATA_ROOT}" ]]; then
+    echo "existing ${SERVICE_USER} account does not match the deployment contract" >&2
+    exit 1
+  fi
 fi
 
 install -d -o root -g root -m 0755 "${APP_ROOT}" "${APP_ROOT}/releases"
@@ -42,6 +49,8 @@ if [[ ! -e "${ENV_FILE}" ]]; then
 else
   echo "Preserved existing ${ENV_FILE}."
 fi
+chown root:"${SERVICE_GROUP}" "${ENV_FILE}"
+chmod 0640 "${ENV_FILE}"
 
 install -o root -g root -m 0755 \
   "${SCRIPT_DIR}/deploy-release.sh" /usr/local/sbin/faztestbot-deploy

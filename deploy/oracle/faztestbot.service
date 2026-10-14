@@ -23,8 +23,10 @@ UMask=0077
 # The bot needs outbound HTTPS and write access only to its persistent data root.
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
+ProtectHostname=true
 ReadWritePaths=/var/lib/faztestbot
 ProtectKernelTunables=true
 ProtectKernelModules=true
