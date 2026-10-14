@@ -1,0 +1,1 @@
+"""Deployment asset contract tests."""

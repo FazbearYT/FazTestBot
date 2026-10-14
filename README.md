@@ -59,6 +59,9 @@ in [docs/networking.md](docs/networking.md).
 The single-instance runtime contract, readiness/liveness probes, persistent data
 layout, and update/rollback boundary are documented in
 [docs/deployment.md](docs/deployment.md).
+The current manual Oracle Cloud pilot runbook is documented in
+[docs/deployment-oracle.md](docs/deployment-oracle.md); unattended CD remains
+disabled until that pilot proves restart, backup, and rollback behavior.
 
 ## Releases
 

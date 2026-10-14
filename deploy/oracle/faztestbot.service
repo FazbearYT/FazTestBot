@@ -1,0 +1,46 @@
+[Unit]
+Description=FazTestBot Telegram bot
+Documentation=https://github.com/FazbearYT/FazTestBot
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=faztestbot
+Group=faztestbot
+WorkingDirectory=/opt/faztestbot/current
+ExecStartPre=/opt/faztestbot/current/.venv/bin/python -m scripts.doctor --json
+ExecStart=/opt/faztestbot/current/.venv/bin/python bot.py
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=60
+TimeoutStopSec=45
+KillSignal=SIGTERM
+UMask=0077
+
+# The bot needs outbound HTTPS and write access only to its persistent data root.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/faztestbot
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictNamespaces=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=faztestbot
+
+[Install]
+WantedBy=multi-user.target
